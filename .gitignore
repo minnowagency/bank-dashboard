@@ -1,0 +1,5 @@
+.superpowers/
+*.sqlite3
+*.db
+node_modules/
+.env
