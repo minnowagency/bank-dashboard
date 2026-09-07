@@ -51,11 +51,12 @@ Layout: **Overview First** — balance cards on top, unified feed below (user-se
    - Transactions matched by no rule, oldest first. Categorizing an item removes it from the queue and offers to create a rule ("Always tag 'AMZN MKTP' as Supplies?").
 4. **Rules & categories**
    - Rule = "description contains X (optional: account Y, amount condition Z) → category C." First matching rule wins; rules are ordered, editable, deletable, and show a match count.
+   - A new or edited rule applies retroactively to existing **uncategorized** transactions only (clearing them from the review queue); it never overrides a category a person set by hand.
    - Seeded categories (renamable/extensible): Payroll, Shipping, Supplies, Taxes, Fees, Transfers, Revenue, Utilities, Insurance, Other.
 
 Cross-cutting:
 
-- **Transfer detection:** when two transactions across the company's accounts pair up (same amount, opposite signs, dates within a small window), both are auto-tagged Transfers so in/out totals aren't inflated by internal moves.
+- **Transfer detection:** when two transactions across the company's accounts pair up (same amount, opposite signs, dates within ±3 days), both are auto-tagged Transfers so in/out totals aren't inflated by internal moves. When multiple candidates share an amount, pair closest-dated first; each transaction pairs at most once. Auto-tagged transfers count as categorized and skip the review queue.
 - **CSV export** of any filtered transaction view.
 
 Explicitly out of scope (YAGNI): budgeting, invoicing, payments, multi-user roles, mobile app (the site is responsive; that's enough), real-time sync.
@@ -65,6 +66,7 @@ Explicitly out of scope (YAGNI): budgeting, invoicing, payments, multi-user role
 - Login: bcrypt-hashed shared credential; 30-day session cookie; 5 failed attempts → 15-minute lockout.
 - Caddy terminates HTTPS with auto-renewing Let's Encrypt certs; the app listens on localhost only.
 - Droplet hardening: firewall (SSH + HTTPS only), SSH keys only, unattended security updates.
+- The SimpleFIN access URL lives in an `.env` file on the droplet (never in git, not in SQLite).
 - Nightly encrypted backup of the SQLite file to off-box storage (e.g., DigitalOcean Spaces), preserving notes/rules if the droplet dies.
 - Breach blast radius: balances and transaction history (visibility only). SimpleFIN token cannot move money; Truist credentials never touch this system.
 
@@ -86,6 +88,6 @@ Explicitly out of scope (YAGNI): budgeting, invoicing, payments, multi-user role
 
 ## Open items for the implementation plan
 
-1. Verify Truist connectivity through SimpleFIN with one real login before building anything else.
+1. Verify Truist connectivity through SimpleFIN with one real login before building anything else. During this spike, also confirm SimpleFIN's error responses distinguish "re-link needed" from transient failures (the staleness banner copy depends on it).
 2. Choose the subdomain / confirm which domain's DNS to use.
 3. Choose off-box backup target (DO Spaces vs other).
