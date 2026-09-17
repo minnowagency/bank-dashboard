@@ -67,3 +67,11 @@ test('fetchAccounts throws on non-2xx', async () => {
     () => fetchAccounts('https://u:p@example.org/simplefin', { fetchFn: async () => fakeResponse('nope', { status: 403 }) }),
     /403/);
 });
+
+test('fetchAccounts sanitizes errors on malformed URL', async () => {
+  const malformedUrl = 'not a url';
+  await assert.rejects(
+    () => fetchAccounts(malformedUrl, { fetchFn: async () => fakeResponse('') }),
+    (err) => !err.message.includes(malformedUrl) && err.input === undefined,
+  );
+});

@@ -9,7 +9,12 @@ async function claimSetupToken(setupToken, fetchFn = fetch) {
 }
 
 function splitAuth(accessUrl) {
-  const u = new URL(accessUrl);
+  let u;
+  try {
+    u = new URL(accessUrl);
+  } catch (err) {
+    throw new Error('invalid SimpleFIN access URL');
+  }
   const user = decodeURIComponent(u.username);
   const pass = decodeURIComponent(u.password);
   u.username = '';
