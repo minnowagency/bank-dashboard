@@ -1,4 +1,4 @@
-const Database = require('better-sqlite3');
+const { DatabaseSync } = require('node:sqlite');
 const fs = require('fs');
 const path = require('path');
 
@@ -7,7 +7,18 @@ const SEED_CATEGORIES = ['Payroll', 'Shipping', 'Supplies', 'Taxes', 'Fees',
 
 function openDb(dbPath) {
   if (dbPath !== ':memory:') fs.mkdirSync(path.dirname(path.resolve(dbPath)), { recursive: true });
-  const db = new Database(dbPath);
+  const raw = new DatabaseSync(dbPath);
+  const db = {
+    prepare: (sql) => raw.prepare(sql),
+    exec: (sql) => raw.exec(sql),
+    pragma: (s) => raw.exec(`PRAGMA ${s}`),
+    transaction: (fn) => (...args) => {
+      raw.exec('BEGIN');
+      try { const out = fn(...args); raw.exec('COMMIT'); return out; }
+      catch (err) { raw.exec('ROLLBACK'); throw err; }
+    },
+    close: () => raw.close(),
+  };
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));

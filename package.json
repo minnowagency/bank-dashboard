@@ -2,14 +2,13 @@
   "name": "bank-dashboard",
   "private": true,
   "version": "0.1.0",
-  "engines": { "node": ">=20" },
+  "engines": { "node": ">=22.13" },
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test \"test/*.test.js\"",
     "start": "node bin/serve.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^11.3.0",
     "cookie-parser": "^1.4.6",
     "ejs": "^3.1.10",
     "express": "^4.19.2"
