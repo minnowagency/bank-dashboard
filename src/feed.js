@@ -26,11 +26,11 @@ function feedQuery(db, user, filters = {}) {
   const from = filters.from && quietly(() => toEpochDay(filters.from));
   if (from !== undefined && from !== null && from !== false) { where.push('t.posted_at >= ?'); params.push(from); }
   const to = filters.to && quietly(() => toEpochDay(filters.to));
-  if (to) { where.push('t.posted_at < ?'); params.push(to + 86400); }
+  if (to !== undefined && to !== null && to !== false) { where.push('t.posted_at < ?'); params.push(to + 86400); }
   const min = filters.min && quietly(() => toCents(filters.min));
   if (min !== undefined && min !== null && min !== false) { where.push('ABS(t.amount_cents) >= ?'); params.push(Math.abs(min)); }
   const max = filters.max && quietly(() => toCents(filters.max));
-  if (max) { where.push('ABS(t.amount_cents) <= ?'); params.push(Math.abs(max)); }
+  if (max !== undefined && max !== null && max !== false) { where.push('ABS(t.amount_cents) <= ?'); params.push(Math.abs(max)); }
 
   const rows = db.prepare(`
     SELECT t.*, c.name AS category_name,

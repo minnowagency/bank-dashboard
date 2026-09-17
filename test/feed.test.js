@@ -54,6 +54,16 @@ test('garbage filter values are ignored, not thrown', () => {
   assert.equal(feedQuery(db, OWNER, { min: 'abc', from: 'not-a-date' }).rows.length, 4);
 });
 
+test('to filter with epoch-day 0 (1970-01-01) applies correctly', () => {
+  const db = fixture();
+  assert.equal(feedQuery(db, OWNER, { to: '1970-01-01' }).rows.length, 0);
+});
+
+test('max filter with $0 applies correctly', () => {
+  const db = fixture();
+  assert.equal(feedQuery(db, OWNER, { max: '0' }).rows.length, 0);
+});
+
 test('totals: bank cash vs credit owed, per visibility', () => {
   const db = fixture();
   assert.deepEqual(totals(db, OWNER), { cashCents: 4218010, owedCents: 1943344 });
