@@ -11,7 +11,7 @@ Read-only by construction: the system can never move money or modify anything at
 
 ## Users & access
 
-- Two users (Michael + assistant) sharing **one username/password**.
+- Two users (Michael + assistant), **each with their own username/password**. Equal permissions — no roles or admin tier. Annotations (notes, manual categorizations) record which user made them. Either password can be reset from the server without affecting the other.
 - Accessible from anywhere via HTTPS directly on the droplet's IP — no custom domain for now. Preferred: Let's Encrypt IP-address certificate (short-lived, auto-renewed by Caddy); fallback if that's rough at build time: a free `<ip>.sslip.io` hostname with a standard Let's Encrypt cert. A real subdomain can be pointed at the droplet later with no app changes.
 - No roles, no multi-tenancy, no self-registration.
 
@@ -63,7 +63,7 @@ Explicitly out of scope (YAGNI): budgeting, invoicing, payments, multi-user role
 
 ## Security
 
-- Login: bcrypt-hashed shared credential; 30-day session cookie; 5 failed attempts → 15-minute lockout.
+- Login: two user accounts, bcrypt-hashed passwords; 30-day session cookie; 5 failed attempts → 15-minute lockout per account.
 - Caddy terminates HTTPS with auto-renewing Let's Encrypt certs (IP cert, or sslip.io fallback — see Users & access); the app listens on localhost only.
 - Droplet hardening: firewall (SSH + HTTPS only), SSH keys only, unattended security updates.
 - The SimpleFIN access URL lives in an `.env` file on the droplet (never in git, not in SQLite).
