@@ -21,6 +21,7 @@ Read-only by construction: the system can never move money or modify anything at
 ## Data source
 
 - **SimpleFIN Bridge** (~$1.50/mo) as the aggregator. Connections: the ten Truist logins, the company American Express login(s), and Michael's personal Amex — each linked once through SimpleFIN's own flow; bank credentials are never entered into or stored by this app.
+- At build time, verify SimpleFIN's sign conventions for Amex card payments (they vary by aggregator) so transfer pairing matches reality.
 - **Employee Amex cards:** verify at build time how they arrive — as separate sub-accounts (each becomes its own account card + filter) or as transactions on the main account carrying the card member's name (then surfaced as a "card member" field parsed from the data, with a filter). Either path yields per-employee visibility.
 - The app stores a single **SimpleFIN access URL** (read-only by design) on the server.
 - **Risk & fallback:** before any other work, verify a real Truist business login connects through SimpleFIN. If it does not, fall back to Plaid (same app architecture; different sync module).
@@ -58,6 +59,7 @@ Layout: **Overview First** — balance cards on top, unified feed below (user-se
 4. **Rules & categories**
    - Rule = "description contains X (optional: account Y, amount condition Z) → category C." First matching rule wins; rules are ordered, editable, deletable, and show a match count.
    - A new or edited rule applies retroactively to existing **uncategorized** transactions only (clearing them from the review queue); it never overrides a category a person set by hand.
+   - Either user can create rules; rules apply across all accounts regardless of who created them. A rule created from a Private-account transaction is itself **owner-only** (hidden from the member's rules list) so personal merchant names never appear in the shared list.
    - Seeded categories (renamable/extensible): Payroll, Shipping, Supplies, Taxes, Fees, Transfers, Revenue, Utilities, Insurance, Other.
 
 Cross-cutting:
