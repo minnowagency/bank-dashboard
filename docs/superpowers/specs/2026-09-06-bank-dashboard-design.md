@@ -88,6 +88,6 @@ Explicitly out of scope (YAGNI): budgeting, invoicing, payments, multi-user role
 
 ## Open items for the implementation plan
 
-1. Verify Truist connectivity through SimpleFIN with one real login before building anything else. During this spike, also confirm SimpleFIN's error responses distinguish "re-link needed" from transient failures (the staleness banner copy depends on it).
+1. ~~Verify Truist connectivity through SimpleFIN~~ — verified 2026-09-17: first Truist login shows Status OK in Bridge. Still to confirm at build time: transactions flow via the API, and whether SimpleFIN's error responses distinguish "re-link needed" from transient failures (the staleness banner copy depends on it).
 2. ~~Choose the subdomain~~ — resolved: IP-based HTTPS for now (LE IP cert, sslip.io fallback).
 3. Choose off-box backup target (DO Spaces vs other).
