@@ -6,21 +6,21 @@
 
 **Architecture:** One Node.js process: an in-process sync job pulls SimpleFIN every 4h into SQLite; Express serves server-rendered EJS pages behind cookie sessions; Caddy terminates HTTPS on a dedicated droplet.
 
-**Tech Stack:** Node.js ≥20 (CommonJS), Express 4, EJS, better-sqlite3, bcryptjs, cookie-parser; tests with built-in `node --test` + supertest.
+**Tech Stack:** Node.js ≥22.13 (CommonJS), Express 4, EJS, built-in `node:sqlite`, bcryptjs, cookie-parser; tests with built-in `node --test` + supertest.
 
 **Spec:** `docs/superpowers/specs/2026-09-06-bank-dashboard-design.md`
 
 ## Global Constraints
 
-- Node ≥ 20, CommonJS (`require`), no build pipeline, no SPA framework.
+- Node ≥ 22.13, CommonJS (`require`), no build pipeline, no SPA framework, **no native modules**.
 - Money is **integer cents** everywhere (`amount_cents`); never floats. Timestamps are **epoch seconds**.
-- All DB access via better-sqlite3 (synchronous). One SQLite file; WAL mode; foreign keys ON.
+- All DB access via Node's built-in `node:sqlite` (synchronous), always through the wrapper `openDb` returns from `src/db.js` — it exposes `prepare/exec/pragma/transaction/close` with better-sqlite3-compatible semantics (`transaction(fn)` returns a callable that wraps fn in BEGIN/COMMIT/ROLLBACK). One SQLite file; WAL mode; foreign keys ON.
 - The app binds **127.0.0.1 only**. Caddy is the only public listener.
 - The SimpleFIN access URL lives only in `.env` (never git, never SQLite).
 - Visibility rule: a `member` user must never see accounts with `visibility='private'` — absent, not masked — in every route, count, filter dropdown, and export.
 - New accounts default `visibility='private'`. Sync upserts never overwrite `visibility`, `kind`, or `display_name`.
 - Rules/transfer categorization only ever touches rows with `category_id IS NULL`; `category_source='manual'` rows are untouchable by automation.
-- Tests: `npm test` runs `node --test test/`. Every task ends green. Commit after every task with the given message.
+- Tests: `npm test` runs `node --test "test/*.test.js"`. Every task ends green. Commit after every task with the given message.
 - Run all commands from the repo root `~/bank-dashboard` unless stated otherwise.
 
 ---
@@ -32,7 +32,7 @@
 - Modify: `.gitignore` (append)
 
 **Interfaces:**
-- Produces: `openDb(dbPath)` → better-sqlite3 Database with schema applied + categories seeded; `SEED_CATEGORIES` array. All later tasks call `openDb(':memory:')` in tests.
+- Produces: `openDb(dbPath)` → db wrapper (`prepare`, `exec`, `pragma`, `transaction`, `close`) over `node:sqlite`'s `DatabaseSync`, with schema applied + categories seeded; `SEED_CATEGORIES` array. All later tasks call `openDb(':memory:')` in tests. `prepare()` returns the native `StatementSync` (`run`/`get`/`all`, bare `@name` params, positional `?` args).
 
 - [ ] **Step 1: Scaffold package**
 
@@ -43,14 +43,13 @@ Create `package.json`:
   "name": "bank-dashboard",
   "private": true,
   "version": "0.1.0",
-  "engines": { "node": ">=20" },
+  "engines": { "node": ">=22.13" },
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test \"test/*.test.js\"",
     "start": "node bin/serve.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^11.3.0",
     "cookie-parser": "^1.4.6",
     "ejs": "^3.1.10",
     "express": "^4.19.2"
@@ -69,7 +68,7 @@ data/
 .env
 ```
 
-Run: `npm install` — expect a lockfile and no errors (better-sqlite3 compiles natively; needs Xcode CLT locally, build-essential on the droplet).
+Run: `npm install` — expect a lockfile and no errors (all deps are pure JS; no native compilation).
 
 - [ ] **Step 2: Write the failing test**
 
@@ -195,7 +194,7 @@ CREATE TABLE IF NOT EXISTS settings (
 `src/db.js`:
 
 ```js
-const Database = require('better-sqlite3');
+const { DatabaseSync } = require('node:sqlite');
 const fs = require('fs');
 const path = require('path');
 
@@ -204,7 +203,18 @@ const SEED_CATEGORIES = ['Payroll', 'Shipping', 'Supplies', 'Taxes', 'Fees',
 
 function openDb(dbPath) {
   if (dbPath !== ':memory:') fs.mkdirSync(path.dirname(path.resolve(dbPath)), { recursive: true });
-  const db = new Database(dbPath);
+  const raw = new DatabaseSync(dbPath);
+  const db = {
+    prepare: (sql) => raw.prepare(sql),
+    exec: (sql) => raw.exec(sql),
+    pragma: (s) => raw.exec(`PRAGMA ${s}`),
+    transaction: (fn) => (...args) => {
+      raw.exec('BEGIN');
+      try { const out = fn(...args); raw.exec('COMMIT'); return out; }
+      catch (err) { raw.exec('ROLLBACK'); throw err; }
+    },
+    close: () => raw.close(),
+  };
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
@@ -2753,7 +2763,7 @@ rclone delete --min-age 60d spaces:bank-dashboard-backups/ || true
 ## 2. Base hardening (as root)
 ```bash
 apt-get update && apt-get -y upgrade
-apt-get -y install ufw unattended-upgrades build-essential sqlite3 gpg rclone git
+apt-get -y install ufw unattended-upgrades sqlite3 gpg rclone git
 dpkg-reconfigure -f noninteractive unattended-upgrades
 ufw default deny incoming
 ufw allow OpenSSH
