@@ -100,3 +100,23 @@ test('connection errors are stored in settings sync_errors', async () => {
   const stored = JSON.parse(db.prepare("SELECT value FROM settings WHERE key='sync_errors'").get().value);
   assert.deepEqual(stored, ['Connection to Truist may need attention']);
 });
+
+test('runSync pipeline: transfers detected before rules apply', async () => {
+  const db = openDb(':memory:');
+  const fees = db.prepare("SELECT id FROM categories WHERE name='Fees'").get().id;
+  db.prepare("INSERT INTO rules (position, pattern, category_id) VALUES (1, 'PAYMENT', ?)").run(fees);
+  const p = {
+    errors: [],
+    accounts: [
+      { id: 'CHK', name: 'Checking', orgName: 'Truist', balanceCents: 0, balanceDate: NOW,
+        transactions: [{ id: 'o1', postedAt: NOW, amountCents: -80000, description: 'AMEX EPAYMENT', pending: 0, cardMember: null }] },
+      { id: 'AMX', name: 'Card', orgName: 'American Express', balanceCents: 0, balanceDate: NOW,
+        transactions: [{ id: 'i1', postedAt: NOW, amountCents: 80000, description: 'PAYMENT RECEIVED', pending: 0, cardMember: null }] },
+    ],
+  };
+  const r = await runSync(db, { accessUrl: 'x', fetchAccountsFn: async () => p, now });
+  assert.equal(r.transferPairs, 1);
+  assert.equal(r.ruleMatches, 0); // transfer pairing won even though the 'PAYMENT' rule also matched
+  const transfersId = db.prepare("SELECT id FROM categories WHERE name='Transfers'").get().id;
+  assert.equal(db.prepare("SELECT category_id FROM transactions WHERE uid='CHK|o1'").get().category_id, transfersId);
+});

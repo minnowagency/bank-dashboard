@@ -1,3 +1,6 @@
+const { detectTransfers } = require('./transfers');
+const { applyRulesToUncategorized } = require('./rules');
+
 const OVERLAP_SECONDS = 7 * 86400;
 
 function guessKind(orgName, name) {
@@ -60,8 +63,10 @@ async function runSync(db, { accessUrl, fetchAccountsFn, now = () => Math.floor(
     })();
     newTransactions = db.prepare('SELECT COUNT(*) AS n FROM transactions').get().n - before;
 
+    const transferPairs = detectTransfers(db);
+    const ruleMatches = applyRulesToUncategorized(db);
     db.prepare('UPDATE sync_runs SET finished_at = ?, ok = 1 WHERE id = ?').run(now(), runId);
-    return { ok: true, errors, newTransactions };
+    return { ok: true, errors, newTransactions, transferPairs, ruleMatches };
   } catch (err) {
     db.prepare('UPDATE sync_runs SET finished_at = ?, ok = 0, error = ? WHERE id = ?')
       .run(now(), String((err && err.message) || err), runId);
