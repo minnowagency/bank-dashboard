@@ -1,0 +1,78 @@
+<%- include('_header', { title, reviewCount }) %>
+
+<% if (staleness.stale.length > 0) { %>
+  <div class="banner">
+    <strong><%= staleness.stale.length %> account<%= staleness.stale.length > 1 ? 's have' : ' has' %> not synced in over 24 hours.</strong>
+    <% staleness.errors.forEach(e => { %><div><%= e %></div><% }) %>
+    <div class="note">If a connection needs attention, re-link it at bridge.simplefin.org, then wait for the next sync.</div>
+  </div>
+<% } %>
+
+<div class="totals">
+  <span>Total cash: <strong><%= fmtUSD(totals.cashCents) %></strong></span>
+  <% if (credits.length > 0) { %><span>Cards owed: <strong class="neg"><%= fmtUSD(totals.owedCents) %></strong></span><% } %>
+</div>
+
+<div class="cards">
+  <% banks.forEach(a => { %>
+    <div class="card">
+      <div><%= a.display_name || a.name %><% if (user.role === 'owner' && a.visibility === 'private') { %> 🔒<% } %></div>
+      <div class="amt"><%= fmtUSD(a.balance_cents) %></div>
+      <div class="meta">synced <%= a.last_synced_at ? fmtDate(a.last_synced_at) : 'never' %></div>
+    </div>
+  <% }) %>
+</div>
+<% if (credits.length > 0) { %>
+  <h2>Credit cards</h2>
+  <div class="cards">
+    <% credits.forEach(a => { %>
+      <div class="card credit">
+        <div><%= a.display_name || a.name %><% if (user.role === 'owner' && a.visibility === 'private') { %> 🔒<% } %></div>
+        <div class="amt"><%= fmtUSD(-a.balance_cents) %> owed</div>
+        <div class="meta">synced <%= a.last_synced_at ? fmtDate(a.last_synced_at) : 'never' %></div>
+      </div>
+    <% }) %>
+  </div>
+<% } %>
+
+<form method="get" action="/" class="filters">
+  <label>Account
+    <select name="account"><option value="">All</option>
+      <% accounts.forEach(a => { %><option value="<%= a.id %>" <%= filters.account === a.id ? 'selected' : '' %>><%= a.display_name || a.name %></option><% }) %>
+    </select></label>
+  <label>Category
+    <select name="category"><option value="">All</option>
+      <% categories.forEach(c => { %><option value="<%= c.id %>" <%= String(filters.category) === String(c.id) ? 'selected' : '' %>><%= c.name %></option><% }) %>
+    </select></label>
+  <% if (members.length > 0) { %>
+    <label>Card member
+      <select name="member"><option value="">All</option>
+        <% members.forEach(m => { %><option <%= filters.member === m ? 'selected' : '' %>><%= m %></option><% }) %>
+      </select></label>
+  <% } %>
+  <label>Search <input name="q" value="<%= filters.q || '' %>" placeholder="description"></label>
+  <label>From <input type="date" name="from" value="<%= filters.from || '' %>"></label>
+  <label>To <input type="date" name="to" value="<%= filters.to || '' %>"></label>
+  <label>Min $ <input name="min" size="6" value="<%= filters.min || '' %>"></label>
+  <label>Max $ <input name="max" size="6" value="<%= filters.max || '' %>"></label>
+  <label><input type="checkbox" name="uncategorized" value="1" <%= filters.uncategorized ? 'checked' : '' %>> Uncategorized</label>
+  <button class="primary">Filter</button>
+  <a href="/export.csv?<%= new URLSearchParams(filters).toString() %>"><button type="button">Export CSV</button></a>
+</form>
+
+<div class="tablewrap">
+<table>
+  <tr><th>Date</th><th>Description</th><th>Account</th><th>Member</th><th>Category</th><th class="num">Amount</th></tr>
+  <% rows.forEach(t => { %>
+    <tr class="<%= t.pending ? 'pending' : '' %>">
+      <td><%= fmtDate(t.posted_at) %></td>
+      <td><%- include('_txn_detail', { t }) %></td>
+      <td><%= t.account_name %></td>
+      <td><%= t.card_member || '' %></td>
+      <td><%= t.category_name || '—' %></td>
+      <td class="num <%= t.amount_cents < 0 ? 'neg' : 'pos' %>"><%= fmtUSD(t.amount_cents) %></td>
+    </tr>
+  <% }) %>
+</table>
+</div>
+<%- include('_footer') %>

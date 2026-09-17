@@ -53,8 +53,39 @@ function createApp(db, { cookieSecure = false } = {}) {
   return app;
 }
 
+const { feedQuery, totals, visibleAccounts } = require('./feed');
+
+function reviewCount(db, user) {
+  const ids = visibleAccounts(db, user).map(a => a.id);
+  if (ids.length === 0) return 0;
+  return db.prepare(`SELECT COUNT(*) AS n FROM transactions
+    WHERE category_id IS NULL AND account_id IN (${ids.map(() => '?').join(',')})`).get(...ids).n;
+}
+
+function staleness(db, user) {
+  const nowS = Math.floor(Date.now() / 1000);
+  const stale = visibleAccounts(db, user)
+    .filter(a => !a.last_synced_at || a.last_synced_at < nowS - 86400);
+  let errors = [];
+  const row = db.prepare("SELECT value FROM settings WHERE key='sync_errors'").get();
+  if (row) { try { errors = JSON.parse(row.value); } catch { errors = []; } }
+  return { stale, errors };
+}
+
 function registerRoutes(app, db) {
-  // Later tasks append route registrations here.
+  app.get('/', (req, res) => {
+    const { rows, accounts, categories, members } = feedQuery(db, req.user, req.query);
+    res.render('dashboard', {
+      title: 'Overview',
+      rows, accounts, categories, members,
+      banks: accounts.filter(a => a.kind === 'bank'),
+      credits: accounts.filter(a => a.kind === 'credit'),
+      totals: totals(db, req.user),
+      filters: req.query,
+      reviewCount: reviewCount(db, req.user),
+      staleness: staleness(db, req.user),
+    });
+  });
 }
 
 module.exports = { createApp };
