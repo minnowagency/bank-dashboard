@@ -65,3 +65,50 @@ test('review queue lists only visible uncategorized, oldest first', async () => 
   const ar = await request(app).get('/review').set('Cookie', asst);
   assert.ok(!/PERSONAL DINNER/.test(ar.text));
 });
+
+test('invalid category_id (non-integer) returns 400 and does not update', async () => {
+  const { app, db } = makeApp();
+  const cookie = await login(app, 'michael', 'ownerpass1');
+  const res = await request(app).post('/txns/CHK|1/category').set('Cookie', cookie)
+    .type('form').send({ category_id: 'abc' });
+  assert.equal(res.status, 400);
+  const t = db.prepare("SELECT * FROM transactions WHERE uid='CHK|1'").get();
+  assert.equal(t.category_id, null);
+  assert.equal(t.category_source, null);
+});
+
+test('non-existent category_id returns 400 and does not update', async () => {
+  const { app, db } = makeApp();
+  const cookie = await login(app, 'michael', 'ownerpass1');
+  const res = await request(app).post('/txns/CHK|1/category').set('Cookie', cookie)
+    .type('form').send({ category_id: '9999' });
+  assert.equal(res.status, 400);
+  const t = db.prepare("SELECT * FROM transactions WHERE uid='CHK|1'").get();
+  assert.equal(t.category_id, null);
+  assert.equal(t.category_source, null);
+});
+
+test('evil referer (cross-origin) does not redirect there; instead redirects to /', async () => {
+  const { app, db } = makeApp();
+  const cookie = await login(app, 'michael', 'ownerpass1');
+  const res = await request(app).post('/txns/CHK|1/note').set('Cookie', cookie)
+    .set('Referer', 'https://evil.example/phish').type('form').send({ note: 'test' });
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.location, '/');
+});
+
+test('same-origin referer is followed; malformed referer falls back to /', async () => {
+  const { app, db } = makeApp();
+  const cookie = await login(app, 'michael', 'ownerpass1');
+  // Test malformed referer
+  const bad = await request(app).post('/txns/CHK|1/note').set('Cookie', cookie)
+    .set('Referer', 'not a url').type('form').send({ note: 'x' });
+  assert.equal(bad.status, 302);
+  assert.equal(bad.headers.location, '/');
+  // Test same-origin referer with explicit host
+  const good = await request(app).post('/txns/CHK|1/note').set('Cookie', cookie)
+    .set('Host', 'example.test').set('Referer', 'http://example.test/review')
+    .type('form').send({ note: 'x' });
+  assert.equal(good.status, 302);
+  assert.equal(good.headers.location, '/review');
+});

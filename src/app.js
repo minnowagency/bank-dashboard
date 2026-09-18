@@ -81,7 +81,23 @@ function registerRoutes(app, db) {
     if (user.role !== 'owner' && t.visibility !== 'company') return null;
     return t;
   }
-  const back = (req, res) => res.redirect(req.get('referer') || '/');
+  function validateCategoryId(db, cid) {
+    if (!Number.isInteger(cid)) return false;
+    return db.prepare('SELECT id FROM categories WHERE id = ?').get(cid) != null;
+  }
+  const back = (req, res) => {
+    const ref = req.get('referer');
+    if (!ref) return res.redirect('/');
+    try {
+      const parsed = new URL(ref);
+      if (parsed.host === req.get('host')) {
+        return res.redirect(parsed.pathname + parsed.search);
+      }
+    } catch (e) {
+      // ignore parse errors, fall through to default
+    }
+    res.redirect('/');
+  };
 
   app.post('/txns/:uid/category', (req, res) => {
     const t = visibleTxn(db, req.user, req.params.uid);
@@ -91,6 +107,7 @@ function registerRoutes(app, db) {
       db.prepare(`UPDATE transactions SET category_id=NULL, category_source=NULL,
                   categorized_by=NULL, rule_id=NULL WHERE uid=?`).run(t.uid);
     } else {
+      if (!validateCategoryId(db, cid)) return res.status(400).send('Unknown category');
       db.prepare(`UPDATE transactions SET category_id=?, category_source='manual',
                   categorized_by=?, rule_id=NULL WHERE uid=?`).run(cid, req.user.id, t.uid);
     }
@@ -111,7 +128,8 @@ function registerRoutes(app, db) {
     if (!t) return res.status(404).send('Not found');
     const categoryId = Number(req.body.category_id);
     const pattern = String(req.body.pattern || '').trim();
-    if (!pattern || !categoryId) return res.status(400).send('Pattern and category required');
+    if (!pattern) return res.status(400).send('Pattern required');
+    if (!validateCategoryId(db, categoryId)) return res.status(400).send('Unknown category');
     createRule(db, { pattern, categoryId, ownerOnly: t.visibility === 'private', createdBy: req.user.id });
     db.prepare(`UPDATE transactions SET category_id=?, category_source='manual',
                 categorized_by=?, rule_id=NULL WHERE uid=?`).run(categoryId, req.user.id, t.uid);
