@@ -219,6 +219,32 @@ function registerRoutes(app, db) {
     return r;
   }
 
+  app.post('/rules/:id/edit', (req, res) => {
+    const r = visibleRule(db, req.user, req.params.id);
+    if (!r) return res.status(404).send('Not found');
+    const pattern = String(req.body.pattern || '').trim();
+    const categoryId = Number(req.body.category_id);
+    if (!pattern || !categoryId) return res.status(400).send('Pattern and category required');
+    if (!validateCategoryId(db, categoryId)) return res.status(400).send('Unknown category');
+    let amountCents = null;
+    if (req.body.amount && String(req.body.amount).trim()) {
+      try { amountCents = toCents(req.body.amount); } catch { return res.status(400).send('Bad amount'); }
+    }
+    const visIds = visibleAccounts(db, req.user).map(a => a.id);
+    const accountId = req.body.account_id && visIds.includes(req.body.account_id) ? req.body.account_id : null;
+    // identity, position, owner_only, and created_by stay unchanged, except: a
+    // private account_id always forces owner_only=1 (same leak rule as creation)
+    let ownerOnly = r.owner_only;
+    if (accountId) {
+      const acct = db.prepare('SELECT visibility FROM accounts WHERE id = ?').get(accountId);
+      if (acct && acct.visibility === 'private') ownerOnly = 1;
+    }
+    db.prepare(`UPDATE rules SET pattern = ?, account_id = ?, amount_cents = ?, category_id = ?, owner_only = ?
+                WHERE id = ?`).run(pattern, accountId, amountCents, categoryId, ownerOnly ? 1 : 0, r.id);
+    applyRulesToUncategorized(db);
+    res.redirect('/rules');
+  });
+
   app.post('/rules/:id/delete', (req, res) => {
     const r = visibleRule(db, req.user, req.params.id);
     if (!r) return res.status(404).send('Not found');
@@ -251,7 +277,10 @@ function registerRoutes(app, db) {
 
   app.post('/categories/:id/rename', (req, res) => {
     const name = String(req.body.name || '').trim();
-    if (name) db.prepare('UPDATE categories SET name = ? WHERE id = ?').run(name, Number(req.params.id));
+    if (!name) return res.redirect('/rules');
+    const clash = db.prepare('SELECT id FROM categories WHERE name = ? AND id != ?').get(name, Number(req.params.id));
+    if (clash) return res.status(400).send('Category name already in use');
+    db.prepare('UPDATE categories SET name = ? WHERE id = ?').run(name, Number(req.params.id));
     res.redirect('/rules');
   });
 
@@ -272,10 +301,11 @@ function registerRoutes(app, db) {
   });
 
   app.get('/export.csv', (req, res) => {
-    const { rows } = feedQuery(db, req.user, req.query);
+    const { rows } = feedQuery(db, req.user, req.query, { limit: 0 });
     const esc = (v) => {
-      const s = v === null || v === undefined ? '' : String(v);
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      let s = v === null || v === undefined ? '' : String(v);
+      if (/^[=+\-@]/.test(s)) s = `'${s}`;
+      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
     const cents = (c) => `${c < 0 ? '-' : ''}${Math.floor(Math.abs(c) / 100)}.${String(Math.abs(c) % 100).padStart(2, '0')}`;
     const header = 'date,description,account,card_member,category,amount,pending,note';

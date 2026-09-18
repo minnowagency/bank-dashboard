@@ -41,6 +41,18 @@ test('sessions: create, fetch, expire, delete', () => {
   assert.equal(getSessionUser(db, undefined, NOW), null);
 });
 
+test('createSession purges expired sessions before inserting the new one', () => {
+  const db = openDb(':memory:');
+  createUser(db, 'michael', 'pw', 'owner');
+  const uid = db.prepare("SELECT id FROM users WHERE username='michael'").get().id;
+  const first = createSession(db, uid, NOW);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM sessions').get().n, 1);
+  createSession(db, uid, NOW + SESSION_TTL_SECONDS + 10);
+  const tokens = db.prepare('SELECT token FROM sessions').all().map(r => r.token);
+  assert.equal(tokens.length, 1, 'expired session purged, only the new one remains');
+  assert.ok(!tokens.includes(first), 'the expired session row is gone');
+});
+
 test('createUser on existing username resets password and clears lockout', () => {
   const db = openDb(':memory:');
   createUser(db, 'asst', 'old', 'member');

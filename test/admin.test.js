@@ -58,6 +58,54 @@ test('categories add and rename', async () => {
   assert.ok(cat(db, 'Travel & Meals'));
 });
 
+test('renaming a category to a name already in use returns 400, not a crash', async () => {
+  const { app, db } = makeApp();
+  const cookie = await login(app, 'michael', 'ownerpass1');
+  const fees = cat(db, 'Fees');
+  const res = await request(app).post(`/categories/${fees}/rename`).set('Cookie', cookie).type('form')
+    .send({ name: 'Shipping' });
+  assert.equal(res.status, 400);
+  assert.equal(cat(db, 'Fees'), fees, 'Fees category untouched after rejected rename');
+});
+
+test('rule editing: owner updates pattern+category, position unchanged', async () => {
+  const { app, db } = makeApp();
+  const cookie = await login(app, 'michael', 'ownerpass1');
+  const shipping = cat(db, 'Shipping'), fees = cat(db, 'Fees');
+  db.prepare("INSERT INTO rules (id, position, pattern, category_id, owner_only) VALUES (5, 3, 'OLD', ?, 0)").run(shipping);
+  const res = await request(app).post('/rules/5/edit').set('Cookie', cookie).type('form')
+    .send({ pattern: 'NEW', category_id: String(fees) });
+  assert.equal(res.status, 302);
+  const r = db.prepare('SELECT * FROM rules WHERE id = 5').get();
+  assert.equal(r.pattern, 'NEW');
+  assert.equal(r.category_id, fees);
+  assert.equal(r.position, 3, 'position unchanged by edit');
+});
+
+test('member editing an owner_only rule gets 404', async () => {
+  const { app, db } = makeApp();
+  const fees = cat(db, 'Fees');
+  db.prepare("INSERT INTO rules (id, position, pattern, category_id, owner_only) VALUES (6, 1, 'SECRET', ?, 1)").run(fees);
+  const cookie = await login(app, 'asst', 'memberpass1');
+  const res = await request(app).post('/rules/6/edit').set('Cookie', cookie).type('form')
+    .send({ pattern: 'HACKED', category_id: String(fees) });
+  assert.equal(res.status, 404);
+  assert.equal(db.prepare('SELECT pattern FROM rules WHERE id = 6').get().pattern, 'SECRET');
+});
+
+test('editing a shared rule to a private account_id forces owner_only=1', async () => {
+  const { app, db } = makeApp();
+  const cookie = await login(app, 'michael', 'ownerpass1');
+  const fees = cat(db, 'Fees');
+  db.prepare("INSERT INTO rules (id, position, pattern, category_id, owner_only) VALUES (7, 1, 'SHARED', ?, 0)").run(fees);
+  const res = await request(app).post('/rules/7/edit').set('Cookie', cookie).type('form')
+    .send({ pattern: 'SHARED', category_id: String(fees), account_id: 'PER' });
+  assert.equal(res.status, 302);
+  const r = db.prepare('SELECT * FROM rules WHERE id = 7').get();
+  assert.equal(r.account_id, 'PER');
+  assert.equal(r.owner_only, 1, 'private account_id forces owner_only=1 on edit');
+});
+
 test('accounts admin is owner-only and updates the three owner fields', async () => {
   const { app, db } = makeApp();
   const member = await login(app, 'asst', 'memberpass1');

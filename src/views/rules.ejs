@@ -1,9 +1,12 @@
 <%- include('_header', { title, reviewCount }) %>
 <h1>Rules</h1>
 <p class="note">First matching rule wins, top to bottom. Rules only categorize transactions that have no category yet.</p>
+<% rules.forEach(r => { %>
+  <form id="re-<%= r.id %>" method="post" action="/rules/<%= r.id %>/edit"></form>
+<% }) %>
 <div class="tablewrap">
 <table>
-  <tr><th></th><th>Pattern</th><th>Account</th><th class="num">Amount</th><th>Category</th><th class="num">Matches</th><th></th></tr>
+  <tr><th></th><th>Pattern</th><th>Account</th><th class="num">Amount</th><th>Category</th><th class="num">Matches</th><th></th><th></th></tr>
   <% rules.forEach(r => { %>
     <tr>
       <td>
@@ -12,11 +15,14 @@
           <form method="post" action="/rules/<%= r.id %>/move" class="inline"><input type="hidden" name="dir" value="down"><button>↓</button></form>
         <% } %>
       </td>
-      <td>"<%= r.pattern %>"<% if (r.owner_only) { %> 🔒<% } %></td>
-      <td><%= r.account_name || 'any' %></td>
-      <td class="num"><%= r.amount_cents === null ? 'any' : fmtUSD(r.amount_cents) %></td>
-      <td><%= r.category_name %></td>
+      <td><input form="re-<%= r.id %>" name="pattern" value="<%= r.pattern %>" size="16"><% if (r.owner_only) { %> 🔒<% } %></td>
+      <td><select form="re-<%= r.id %>" name="account_id"><option value="">any</option>
+        <% accounts.forEach(a => { %><option value="<%= a.id %>" <%= r.account_id === a.id ? 'selected' : '' %>><%= a.display_name || a.name %></option><% }) %></select></td>
+      <td class="num"><input form="re-<%= r.id %>" name="amount" value="<%= r.amount_cents === null ? '' : (r.amount_cents / 100).toFixed(2) %>" size="8" placeholder="any"></td>
+      <td><select form="re-<%= r.id %>" name="category_id">
+        <% categories.forEach(c => { %><option value="<%= c.id %>" <%= r.category_id === c.id ? 'selected' : '' %>><%= c.name %></option><% }) %></select></td>
       <td class="num"><%= r.matches %></td>
+      <td><button form="re-<%= r.id %>" class="primary">Save</button></td>
       <td><form method="post" action="/rules/<%= r.id %>/delete" class="inline"><button>Delete</button></form></td>
     </tr>
   <% }) %>

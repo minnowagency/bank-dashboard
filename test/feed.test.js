@@ -64,6 +64,33 @@ test('max filter with $0 applies correctly', () => {
   assert.equal(feedQuery(db, OWNER, { max: '0' }).rows.length, 0);
 });
 
+test('form-shaped empty-string filters do not blank the feed', () => {
+  const db = fixture();
+  const blank = feedQuery(db, OWNER, {
+    q: 'ups', from: '', to: '', min: '', max: '', account: '', category: '',
+  }).rows.map(r => r.uid);
+  const bare = feedQuery(db, OWNER, { q: 'ups' }).rows.map(r => r.uid);
+  assert.deepEqual(blank, bare);
+  assert.deepEqual(blank, ['CHK|1']);
+});
+
+test('repeated query params (arrays) do not throw', () => {
+  const db = fixture();
+  assert.doesNotThrow(() => feedQuery(db, OWNER, { q: ['a', 'b'] }));
+});
+
+test('garbage category filter is ignored, not zeroed', () => {
+  const db = fixture();
+  assert.equal(feedQuery(db, OWNER, { category: 'abc' }).rows.length, 4);
+});
+
+test('feedQuery limit option: default 500, explicit small limit, 0 means unlimited', () => {
+  const db = fixture();
+  assert.equal(feedQuery(db, OWNER, {}, { limit: 2 }).rows.length, 2);
+  assert.equal(feedQuery(db, OWNER, {}, { limit: 0 }).rows.length, 4);
+  assert.equal(feedQuery(db, OWNER, {}).rows.length, 4);
+});
+
 test('totals: bank cash vs credit owed, per visibility', () => {
   const db = fixture();
   assert.deepEqual(totals(db, OWNER), { cashCents: 4218010, owedCents: 1943344 });

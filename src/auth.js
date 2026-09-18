@@ -33,6 +33,7 @@ function verifyLogin(db, username, password, now) {
 }
 
 function createSession(db, userId, now) {
+  db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(now);
   const token = crypto.randomBytes(32).toString('hex');
   db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)')
     .run(token, userId, now + SESSION_TTL_SECONDS);

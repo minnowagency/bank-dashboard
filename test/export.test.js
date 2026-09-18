@@ -25,3 +25,15 @@ test('export.csv respects filters and visibility, escapes fields', async () => {
   const filtered = await request(app).get('/export.csv?q=ups').set('Cookie', owner);
   assert.equal(filtered.text.trim().split('\n').length, 2);
 });
+
+test('export.csv neutralizes CSV formula injection in text fields but not the amount column', async () => {
+  const { app, db } = makeApp();
+  db.prepare(`UPDATE transactions SET note = '=SUM(A1)' WHERE uid = 'CHK|1'`).run();
+  const owner = await login(app, 'michael', 'ownerpass1');
+  const res = await request(app).get('/export.csv').set('Cookie', owner);
+  assert.equal(res.status, 200);
+  const line = res.text.split('\n').find(l => l.includes('UPS FREIGHT'));
+  assert.ok(line, 'expected the UPS FREIGHT row in the export');
+  assert.match(line, /'=SUM\(A1\)/);
+  assert.match(line, /(?<!')-1240\.00/);
+});

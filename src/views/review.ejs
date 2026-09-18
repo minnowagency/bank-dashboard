@@ -12,14 +12,14 @@
       <td class="num <%= t.amount_cents < 0 ? 'neg' : 'pos' %>"><%= fmtUSD(t.amount_cents) %></td>
       <td>
         <form method="post" action="/txns/<%= encodeURIComponent(t.uid) %>/category">
-          <select name="category_id"><% categories.forEach(c => { %><option value="<%= c.id %>"><%= c.name %></option><% }) %></select>
+          <select name="category_id"><option value="">— choose —</option><% categories.forEach(c => { %><option value="<%= c.id %>"><%= c.name %></option><% }) %></select>
           <button>Save</button>
         </form>
       </td>
       <td>
         <form method="post" action="/txns/<%= encodeURIComponent(t.uid) %>/make-rule">
           <input name="pattern" value="<%= t.description %>" size="18">
-          <select name="category_id"><% categories.forEach(c => { %><option value="<%= c.id %>"><%= c.name %></option><% }) %></select>
+          <select name="category_id"><option value="">— choose —</option><% categories.forEach(c => { %><option value="<%= c.id %>"><%= c.name %></option><% }) %></select>
           <button>+ Rule</button>
         </form>
       </td>
