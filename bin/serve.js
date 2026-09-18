@@ -12,12 +12,24 @@ if (!config.accessUrl) {
   process.exit(1);
 }
 
+function redact(text) {
+  let redacted = text;
+  redacted = redacted.replace(new RegExp(config.accessUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '[redacted]');
+  try {
+    const u = new URL(config.accessUrl);
+    if (u.username) redacted = redacted.replace(new RegExp(u.username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '[redacted]');
+    if (u.password) redacted = redacted.replace(new RegExp(u.password.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '[redacted]');
+    if (u.username && u.password) redacted = redacted.replace(new RegExp(`${u.username}:${u.password}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '[redacted]');
+  } catch {}
+  return redacted;
+}
+
 const db = openDb(config.dbPath);
 
 startScheduler({
   run: async () => {
     const r = await runSync(db, { accessUrl: config.accessUrl, fetchAccountsFn: fetchAccounts });
-    console.log(`[sync] ok=${r.ok} new=${r.newTransactions || 0} errors=${JSON.stringify(r.errors)}`);
+    console.log(`[sync] ok=${r.ok} new=${r.newTransactions || 0} errors=${redact(JSON.stringify(r.errors))}`);
     return r;
   },
 });

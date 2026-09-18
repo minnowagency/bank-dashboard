@@ -21,3 +21,23 @@ test('scheduler: immediate run, interval on success, backoff doubling on failure
   assert.deepEqual(delays, [1000, 100, 200, 250, 1000, 1000]);
   s.stop();
 });
+
+test('scheduler: backoff resets to retryMs after success during failure sequence', async () => {
+  const delays = [];
+  const timers = [];
+  const setTimeoutFn = (fn, ms) => { delays.push(ms); timers.push(fn); return delays.length; };
+  const results = [{ ok: false }, { ok: true }, { ok: false }, { ok: false }];
+  let calls = 0;
+  const run = async () => results[calls++];
+
+  const s = startScheduler({ run, intervalMs: 1000, retryMs: 100, maxRetryMs: 250, setTimeoutFn });
+  // allow each chained run to settle
+  for (let i = 0; i < results.length - 1; i++) {
+    await new Promise(r => setImmediate(r));
+    timers[i]();               // fire the most recently scheduled timer
+  }
+  await new Promise(r => setImmediate(r));
+  assert.equal(calls, results.length);
+  assert.deepEqual(delays, [100, 1000, 100, 200]);
+  s.stop();
+});
