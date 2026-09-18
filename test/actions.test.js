@@ -112,3 +112,13 @@ test('same-origin referer is followed; malformed referer falls back to /', async
   assert.equal(good.status, 302);
   assert.equal(good.headers.location, '/review');
 });
+
+test('protocol-relative pathname (// bypass) redirects to / not to evil domain', async () => {
+  const { app, db } = makeApp();
+  const cookie = await login(app, 'michael', 'ownerpass1');
+  const res = await request(app).post('/txns/CHK|1/note').set('Cookie', cookie)
+    .set('Host', 'example.test').set('Referer', 'http://example.test//evil.example/x')
+    .type('form').send({ note: 'x' });
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.location, '/');
+});

@@ -91,7 +91,9 @@ function registerRoutes(app, db) {
     try {
       const parsed = new URL(ref);
       if (parsed.host === req.get('host')) {
-        return res.redirect(parsed.pathname + parsed.search);
+        const pathname = parsed.pathname + parsed.search;
+        if (pathname.startsWith('//')) return res.redirect('/');
+        return res.redirect(pathname);
       }
     } catch (e) {
       // ignore parse errors, fall through to default
