@@ -3,8 +3,10 @@
 <% if (staleness.stale.length > 0) { %>
   <div class="banner">
     <strong><%= staleness.stale.length %> account<%= staleness.stale.length > 1 ? 's have' : ' has' %> not synced in over 24 hours.</strong>
-    <% staleness.errors.forEach(e => { %><div><%= e %></div><% }) %>
-    <div class="note">If a connection needs attention, re-link it at bridge.simplefin.org, then wait for the next sync.</div>
+    <% if (user.role === 'owner') { %>
+      <% staleness.errors.forEach(e => { %><div><%= e %></div><% }) %>
+      <div class="note">If a connection needs attention, re-link it at bridge.simplefin.org, then wait for the next sync.</div>
+    <% } %>
   </div>
 <% } %>
 

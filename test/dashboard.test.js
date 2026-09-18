@@ -47,3 +47,18 @@ test('stale accounts produce a warning banner', async () => {
     assert.match(res.text, /Connection to Truist may need attention/);
   } finally { Date.now = realNow; }
 });
+
+test('member does not see sync error details (privacy)', async () => {
+  const { app, db } = makeApp();
+  db.prepare('UPDATE accounts SET last_synced_at = ? WHERE id = ?').run(T0 - 3 * 86400, 'CHK');
+  db.prepare("INSERT INTO settings (key, value) VALUES ('sync_errors', ?)")
+    .run(JSON.stringify(['Connection to Truist may need attention']));
+  const realNow = Date.now;
+  Date.now = () => T0 * 1000;
+  try {
+    const cookie = await login(app, 'asst', 'memberpass1');
+    const res = await request(app).get('/').set('Cookie', cookie);
+    assert.match(res.text, /not synced in over 24 hours/);
+    assert.ok(!/Connection to Truist may need attention/.test(res.text));
+  } finally { Date.now = realNow; }
+});
