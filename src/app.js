@@ -270,6 +270,24 @@ function registerRoutes(app, db) {
       .run(dn, vis, kind, req.params.id);
     res.redirect('/accounts');
   });
+
+  app.get('/export.csv', (req, res) => {
+    const { rows } = feedQuery(db, req.user, req.query);
+    const esc = (v) => {
+      const s = v === null || v === undefined ? '' : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const cents = (c) => `${c < 0 ? '-' : ''}${Math.floor(Math.abs(c) / 100)}.${String(Math.abs(c) % 100).padStart(2, '0')}`;
+    const header = 'date,description,account,card_member,category,amount,pending,note';
+    const lines = rows.map(t => [
+      new Date(t.posted_at * 1000).toISOString().slice(0, 10),
+      esc(t.description), esc(t.account_name), esc(t.card_member),
+      esc(t.category_name), cents(t.amount_cents), t.pending ? '1' : '0', esc(t.note),
+    ].join(','));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="transactions.csv"');
+    res.send([header, ...lines].join('\n') + '\n');
+  });
 }
 
 module.exports = { createApp };
