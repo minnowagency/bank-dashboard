@@ -17,6 +17,7 @@
       </td>
       <td><input form="re-<%= r.id %>" name="pattern" value="<%= r.pattern %>" size="16"><% if (r.owner_only) { %> 🔒<% } %></td>
       <td><select form="re-<%= r.id %>" name="account_id"><option value="">any</option>
+        <% if (user.role === 'owner' && r.account_id && !accounts.some(a => a.id === r.account_id)) { %><option value="" selected>(hidden account)</option><% } %>
         <% accounts.forEach(a => { %><option value="<%= a.id %>" <%= r.account_id === a.id ? 'selected' : '' %>><%= a.display_name || a.name %></option><% }) %></select></td>
       <td class="num"><input form="re-<%= r.id %>" name="amount" value="<%= r.amount_cents === null ? '' : (r.amount_cents / 100).toFixed(2) %>" size="8" placeholder="any"></td>
       <td><select form="re-<%= r.id %>" name="category_id">

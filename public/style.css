@@ -35,3 +35,4 @@ button { cursor:pointer; } button.primary { background:var(--accent); border-col
 details.rowdetail { margin:0; } details.rowdetail summary { cursor:pointer; list-style:none; }
 .detail-forms { display:flex; gap:12px; flex-wrap:wrap; padding:8px 0; }
 .tablewrap { overflow-x:auto; }
+tr.hidden-acct td { opacity: .5; }

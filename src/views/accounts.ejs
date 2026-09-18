@@ -1,14 +1,14 @@
 <%- include('_header', { title, reviewCount }) %>
 <h1>Accounts</h1>
-<p class="note">Private accounts are invisible to the member login. New accounts start Private.</p>
+<p class="note">Private accounts are invisible to the member login. New accounts start Private. Hidden accounts disappear from every page but this one; they keep syncing, so un-hiding restores their full history.</p>
 <% accounts.forEach(a => { %>
   <form id="f-<%= a.id %>" method="post" action="/accounts/<%= encodeURIComponent(a.id) %>"></form>
 <% }) %>
 <div class="tablewrap">
 <table>
-  <tr><th>Bank name</th><th>Display name</th><th>Type</th><th>Visibility</th><th class="num">Balance</th><th></th></tr>
+  <tr><th>Bank name</th><th>Display name</th><th>Type</th><th>Visibility</th><th>Hide</th><th class="num">Balance</th><th></th></tr>
   <% accounts.forEach(a => { %>
-    <tr>
+    <tr class="<%= a.hidden ? 'hidden-acct' : '' %>">
       <td><%= a.name %> <span class="note"><%= a.org_name || '' %></span></td>
       <td><input form="f-<%= a.id %>" name="display_name" value="<%= a.display_name || '' %>" size="14"></td>
       <td><select form="f-<%= a.id %>" name="kind">
@@ -17,6 +17,7 @@
       <td><select form="f-<%= a.id %>" name="visibility">
         <option value="company" <%= a.visibility === 'company' ? 'selected' : '' %>>Company</option>
         <option value="private" <%= a.visibility === 'private' ? 'selected' : '' %>>Private 🔒</option></select></td>
+      <td><input form="f-<%= a.id %>" type="checkbox" name="hidden" value="1" <%= a.hidden ? 'checked' : '' %>></td>
       <td class="num"><%= fmtUSD(a.balance_cents) %></td>
       <td><button form="f-<%= a.id %>" class="primary">Save</button></td>
     </tr>

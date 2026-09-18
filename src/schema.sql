@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   org_name TEXT,
   kind TEXT NOT NULL DEFAULT 'bank' CHECK (kind IN ('bank','credit')),
   visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('company','private')),
+  hidden INTEGER NOT NULL DEFAULT 0,  -- owner-set; hides the account from every view but /accounts
   balance_cents INTEGER NOT NULL DEFAULT 0,
   balance_date INTEGER,
   last_synced_at INTEGER,

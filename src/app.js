@@ -76,9 +76,9 @@ function staleness(db, user) {
 
 function registerRoutes(app, db) {
   function visibleTxn(db, user, uid) {
-    const t = db.prepare(`SELECT t.*, a.visibility FROM transactions t
+    const t = db.prepare(`SELECT t.*, a.visibility, a.hidden FROM transactions t
       JOIN accounts a ON a.id = t.account_id WHERE t.uid = ?`).get(uid);
-    if (!t) return null;
+    if (!t || t.hidden) return null;
     if (user.role !== 'owner' && t.visibility !== 'company') return null;
     return t;
   }
@@ -236,9 +236,10 @@ function registerRoutes(app, db) {
     if (submitted && visIds.includes(submitted)) {
       // explicit, visible choice: always honored, regardless of role
       accountId = submitted;
-    } else if (req.user.role === 'owner') {
-      // owners see every account, so a blank/invalid submission is an
-      // unambiguous, explicit "clear to any"
+    } else if (req.user.role === 'owner' && (!r.account_id || visIds.includes(r.account_id))) {
+      // the owner's form shows the rule's current account, so a blank
+      // submission is an explicit "clear to any" — unless that account is
+      // hidden and therefore absent from the form's options
       accountId = null;
     } else {
       // members can't see (or select) a private account_id, so a blank
@@ -309,8 +310,9 @@ function registerRoutes(app, db) {
     if (!['company', 'private'].includes(vis)) return res.status(400).send('Invalid visibility');
     if (!['bank', 'credit'].includes(kind)) return res.status(400).send('Invalid kind');
     const dn = String(req.body.display_name || '').trim() || null;
-    db.prepare('UPDATE accounts SET display_name = ?, visibility = ?, kind = ? WHERE id = ?')
-      .run(dn, vis, kind, req.params.id);
+    const hidden = req.body.hidden === '1' ? 1 : 0;
+    db.prepare('UPDATE accounts SET display_name = ?, visibility = ?, kind = ?, hidden = ? WHERE id = ?')
+      .run(dn, vis, kind, hidden, req.params.id);
     res.redirect('/accounts');
   });
 

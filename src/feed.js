@@ -1,7 +1,7 @@
 const { toCents, toEpochDay } = require('./money');
 
 function visibleAccounts(db, user) {
-  const sql = `SELECT * FROM accounts ${user.role === 'owner' ? '' : "WHERE visibility='company'"}
+  const sql = `SELECT * FROM accounts WHERE hidden = 0 ${user.role === 'owner' ? '' : "AND visibility='company'"}
                ORDER BY kind ASC, COALESCE(display_name, name) ASC`;
   return db.prepare(sql).all();
 }
