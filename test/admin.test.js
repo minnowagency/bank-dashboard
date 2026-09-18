@@ -93,6 +93,34 @@ test('member editing an owner_only rule gets 404', async () => {
   assert.equal(db.prepare('SELECT pattern FROM rules WHERE id = 6').get().pattern, 'SECRET');
 });
 
+test('member editing a shared rule with a private account_id cannot silently un-scope it', async () => {
+  const { app, db } = makeApp();
+  const fees = cat(db, 'Fees');
+  // legacy shared rule: account_id is private, but owner_only=0 (visible to members)
+  db.prepare("INSERT INTO rules (id, position, pattern, category_id, owner_only, account_id) VALUES (8, 1, 'LEGACY', ?, 0, 'PER')").run(fees);
+  const cookie = await login(app, 'asst', 'memberpass1');
+  // member's form can't render/select the private account, so it posts account_id=''
+  const res = await request(app).post('/rules/8/edit').set('Cookie', cookie).type('form')
+    .send({ pattern: 'LEGACY-RENAMED', category_id: String(fees), account_id: '' });
+  assert.equal(res.status, 302);
+  const r = db.prepare('SELECT * FROM rules WHERE id = 8').get();
+  assert.equal(r.pattern, 'LEGACY-RENAMED', 'pattern still updates');
+  assert.equal(r.account_id, 'PER', 'private account_id preserved, not nulled out by a blank member submission');
+  assert.equal(r.owner_only, 1, 'private account forces owner_only=1');
+});
+
+test('owner editing a rule with an explicit blank account_id clears it to null', async () => {
+  const { app, db } = makeApp();
+  const fees = cat(db, 'Fees');
+  db.prepare("INSERT INTO rules (id, position, pattern, category_id, owner_only, account_id) VALUES (10, 1, 'HASACCT', ?, 0, 'CHK')").run(fees);
+  const cookie = await login(app, 'michael', 'ownerpass1');
+  const res = await request(app).post('/rules/10/edit').set('Cookie', cookie).type('form')
+    .send({ pattern: 'HASACCT', category_id: String(fees), account_id: '' });
+  assert.equal(res.status, 302);
+  const r = db.prepare('SELECT * FROM rules WHERE id = 10').get();
+  assert.equal(r.account_id, null, 'owner blank submission explicitly clears account_id');
+});
+
 test('editing a shared rule to a private account_id forces owner_only=1', async () => {
   const { app, db } = makeApp();
   const cookie = await login(app, 'michael', 'ownerpass1');

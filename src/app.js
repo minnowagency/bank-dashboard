@@ -231,7 +231,21 @@ function registerRoutes(app, db) {
       try { amountCents = toCents(req.body.amount); } catch { return res.status(400).send('Bad amount'); }
     }
     const visIds = visibleAccounts(db, req.user).map(a => a.id);
-    const accountId = req.body.account_id && visIds.includes(req.body.account_id) ? req.body.account_id : null;
+    const submitted = req.body.account_id;
+    let accountId;
+    if (submitted && visIds.includes(submitted)) {
+      // explicit, visible choice: always honored, regardless of role
+      accountId = submitted;
+    } else if (req.user.role === 'owner') {
+      // owners see every account, so a blank/invalid submission is an
+      // unambiguous, explicit "clear to any"
+      accountId = null;
+    } else {
+      // members can't see (or select) a private account_id, so a blank
+      // submission from a member's form must NOT silently un-scope a rule
+      // that already carries a private/invisible account_id
+      accountId = r.account_id;
+    }
     // identity, position, owner_only, and created_by stay unchanged, except: a
     // private account_id always forces owner_only=1 (same leak rule as creation)
     let ownerOnly = r.owner_only;
