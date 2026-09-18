@@ -1,0 +1,21 @@
+[Unit]
+Description=Bank dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bankdash
+WorkingDirectory=/opt/bank-dashboard
+ExecStart=/usr/bin/node bin/serve.js
+Environment=NODE_ENV=production
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/bank-dashboard/data
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

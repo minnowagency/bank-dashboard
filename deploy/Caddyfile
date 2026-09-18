@@ -1,0 +1,9 @@
+# Preferred: Let's Encrypt IP certificate (requires Caddy >= 2.10)
+203.0.113.7 {
+	reverse_proxy 127.0.0.1:3000
+}
+
+# Fallback if IP certs fail: use the sslip.io hostname instead of the IP block above:
+# 203-0-113-7.sslip.io {
+# 	reverse_proxy 127.0.0.1:3000
+# }
