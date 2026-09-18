@@ -1,1 +1,18 @@
-<%= t.description %>
+<details class="rowdetail">
+  <summary><%= t.description %><% if (t.note) { %> <span class="note">📝 <%= t.note %></span><% } %></summary>
+  <div class="detail-forms">
+    <form method="post" action="/txns/<%= encodeURIComponent(t.uid) %>/category">
+      <select name="category_id"><option value="">— uncategorized —</option>
+        <% categories.forEach(c => { %><option value="<%= c.id %>" <%= t.category_id === c.id ? 'selected' : '' %>><%= c.name %></option><% }) %>
+      </select><button>Set category</button>
+    </form>
+    <form method="post" action="/txns/<%= encodeURIComponent(t.uid) %>/note">
+      <input name="note" value="<%= t.note || '' %>" placeholder="note"><button>Save note</button>
+    </form>
+    <form method="post" action="/txns/<%= encodeURIComponent(t.uid) %>/make-rule">
+      <input name="pattern" value="<%= t.description %>">
+      <select name="category_id"><% categories.forEach(c => { %><option value="<%= c.id %>"><%= c.name %></option><% }) %></select>
+      <button>+ Rule</button>
+    </form>
+  </div>
+</details>

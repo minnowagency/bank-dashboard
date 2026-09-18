@@ -1,0 +1,30 @@
+<%- include('_header', { title, reviewCount }) %>
+<h1>Needs review (<%= rows.length %>)</h1>
+<% if (rows.length === 0) { %><p class="note">Nothing to review. 🎉</p><% } %>
+<div class="tablewrap">
+<table>
+  <tr><th>Date</th><th>Description</th><th>Account</th><th class="num">Amount</th><th>Categorize</th><th>Make rule</th></tr>
+  <% rows.forEach(t => { %>
+    <tr>
+      <td><%= fmtDate(t.posted_at) %></td>
+      <td><%= t.description %></td>
+      <td><%= t.account_name %></td>
+      <td class="num <%= t.amount_cents < 0 ? 'neg' : 'pos' %>"><%= fmtUSD(t.amount_cents) %></td>
+      <td>
+        <form method="post" action="/txns/<%= encodeURIComponent(t.uid) %>/category">
+          <select name="category_id"><% categories.forEach(c => { %><option value="<%= c.id %>"><%= c.name %></option><% }) %></select>
+          <button>Save</button>
+        </form>
+      </td>
+      <td>
+        <form method="post" action="/txns/<%= encodeURIComponent(t.uid) %>/make-rule">
+          <input name="pattern" value="<%= t.description %>" size="18">
+          <select name="category_id"><% categories.forEach(c => { %><option value="<%= c.id %>"><%= c.name %></option><% }) %></select>
+          <button>+ Rule</button>
+        </form>
+      </td>
+    </tr>
+  <% }) %>
+</table>
+</div>
+<%- include('_footer') %>
