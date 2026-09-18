@@ -68,7 +68,7 @@
   <% rows.forEach(t => { %>
     <tr class="<%= t.pending ? 'pending' : '' %>">
       <td><%= fmtDate(t.posted_at) %></td>
-      <td><%- include('_txn_detail', { t }) %></td>
+      <td><%- include('_txn_detail', { t, categories }) %></td>
       <td><%= t.account_name %></td>
       <td><%= t.card_member || '' %></td>
       <td><%= t.category_name || '—' %></td>
