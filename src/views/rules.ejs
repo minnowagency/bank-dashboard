@@ -7,8 +7,10 @@
   <% rules.forEach(r => { %>
     <tr>
       <td>
-        <form method="post" action="/rules/<%= r.id %>/move" class="inline"><input type="hidden" name="dir" value="up"><button>↑</button></form>
-        <form method="post" action="/rules/<%= r.id %>/move" class="inline"><input type="hidden" name="dir" value="down"><button>↓</button></form>
+        <% if (user.role === 'owner') { %>
+          <form method="post" action="/rules/<%= r.id %>/move" class="inline"><input type="hidden" name="dir" value="up"><button>↑</button></form>
+          <form method="post" action="/rules/<%= r.id %>/move" class="inline"><input type="hidden" name="dir" value="down"><button>↓</button></form>
+        <% } %>
       </td>
       <td>"<%= r.pattern %>"<% if (r.owner_only) { %> 🔒<% } %></td>
       <td><%= r.account_name || 'any' %></td>

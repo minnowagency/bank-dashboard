@@ -102,6 +102,8 @@ function registerRoutes(app, db) {
     res.redirect('/');
   };
 
+  const ownerOnly = (req, res, next) => req.user.role === 'owner' ? next() : res.status(404).send('Not found');
+
   app.post('/txns/:uid/category', (req, res) => {
     const t = visibleTxn(db, req.user, req.params.uid);
     if (!t) return res.status(404).send('Not found');
@@ -172,19 +174,20 @@ function registerRoutes(app, db) {
   }
 
   app.get('/rules', (req, res) => {
-    const ids = visibleAccounts(db, req.user).map(a => a.id);
+    const visAccts = visibleAccounts(db, req.user);
+    const ids = visAccts.map(a => a.id);
     const countStmt = ids.length === 0 ? null : db.prepare(
       `SELECT COUNT(*) AS n FROM transactions WHERE rule_id = ? AND account_id IN (${ids.map(() => '?').join(',')})`);
     const rules = rulesFor(db, req.user).map(r => ({
       ...r, matches: countStmt ? countStmt.get(r.id, ...ids).n : 0,
       category_name: db.prepare('SELECT name FROM categories WHERE id=?').get(r.category_id).name,
-      account_name: r.account_id
+      account_name: r.account_id && ids.includes(r.account_id)
         ? (db.prepare('SELECT COALESCE(display_name, name) AS n FROM accounts WHERE id=?').get(r.account_id) || {}).n
         : null,
     }));
     const categories = db.prepare('SELECT * FROM categories ORDER BY name').all();
     res.render('rules', { title: 'Rules', rules, categories,
-      accounts: visibleAccounts(db, req.user), reviewCount: reviewCount(db, req.user) });
+      accounts: visAccts, reviewCount: reviewCount(db, req.user) });
   });
 
   app.post('/rules', (req, res) => {
@@ -198,8 +201,14 @@ function registerRoutes(app, db) {
     }
     const visIds = visibleAccounts(db, req.user).map(a => a.id);
     const accountId = req.body.account_id && visIds.includes(req.body.account_id) ? req.body.account_id : null;
+    // if account is private, force owner_only=1
+    let ownerOnly = req.user.role === 'owner' && !!req.body.owner_only;
+    if (accountId) {
+      const acct = db.prepare('SELECT visibility FROM accounts WHERE id = ?').get(accountId);
+      if (acct && acct.visibility === 'private') ownerOnly = true;
+    }
     createRule(db, { pattern, accountId, amountCents, categoryId,
-      ownerOnly: req.user.role === 'owner' && !!req.body.owner_only, createdBy: req.user.id });
+      ownerOnly, createdBy: req.user.id });
     res.redirect('/rules');
   });
 
@@ -217,10 +226,10 @@ function registerRoutes(app, db) {
     res.redirect('/rules');
   });
 
-  app.post('/rules/:id/move', (req, res) => {
-    const r = visibleRule(db, req.user, req.params.id);
+  app.post('/rules/:id/move', ownerOnly, (req, res) => {
+    const r = db.prepare('SELECT * FROM rules WHERE id = ?').get(Number(req.params.id));
     if (!r) return res.status(404).send('Not found');
-    const list = rulesFor(db, req.user);
+    const list = db.prepare('SELECT * FROM rules ORDER BY position ASC, id ASC').all();
     const i = list.findIndex(x => x.id === r.id);
     const j = req.body.dir === 'up' ? i - 1 : i + 1;
     if (j >= 0 && j < list.length) {
@@ -246,16 +255,16 @@ function registerRoutes(app, db) {
     res.redirect('/rules');
   });
 
-  const ownerOnly = (req, res, next) => req.user.role === 'owner' ? next() : res.status(404).send('Not found');
-
   app.get('/accounts', ownerOnly, (req, res) => {
     const accounts = db.prepare('SELECT * FROM accounts ORDER BY kind, COALESCE(display_name, name)').all();
     res.render('accounts', { title: 'Accounts', accounts, reviewCount: reviewCount(db, req.user) });
   });
 
   app.post('/accounts/:id', ownerOnly, (req, res) => {
-    const vis = ['company', 'private'].includes(req.body.visibility) ? req.body.visibility : 'private';
-    const kind = ['bank', 'credit'].includes(req.body.kind) ? req.body.kind : 'bank';
+    const vis = req.body.visibility;
+    const kind = req.body.kind;
+    if (!['company', 'private'].includes(vis)) return res.status(400).send('Invalid visibility');
+    if (!['bank', 'credit'].includes(kind)) return res.status(400).send('Invalid kind');
     const dn = String(req.body.display_name || '').trim() || null;
     db.prepare('UPDATE accounts SET display_name = ?, visibility = ?, kind = ? WHERE id = ?')
       .run(dn, vis, kind, req.params.id);

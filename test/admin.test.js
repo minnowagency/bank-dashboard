@@ -74,3 +74,47 @@ test('accounts admin is owner-only and updates the three owner fields', async ()
     .send({ display_name: 'My Card', visibility: 'company', kind: 'credit' });
   assert.equal(db.prepare("SELECT visibility FROM accounts WHERE id='PER'").get().visibility, 'company');
 });
+
+test('rule with private account_id gets owner_only=1 forced; member cannot see account name', async () => {
+  const { app, db } = makeApp();
+  const owner = await login(app, 'michael', 'ownerpass1');
+  const fees = cat(db, 'Fees');
+  // owner creates a shared rule (owner_only unchecked) with account_id='PER' (private)
+  await request(app).post('/rules').set('Cookie', owner).type('form')
+    .send({ pattern: 'TEST', category_id: String(fees), account_id: 'PER' });
+  const r = db.prepare("SELECT owner_only FROM rules WHERE pattern='TEST'").get();
+  assert.equal(r.owner_only, 1, 'private account forces owner_only=1');
+  // member should not see it
+  const member = await login(app, 'asst', 'memberpass1');
+  const page = await request(app).get('/rules').set('Cookie', member);
+  assert.ok(!/TEST/.test(page.text), 'member does not see rule with private account');
+  // legacy data: rule with owner_only=0 and account_id='PER'
+  db.prepare("INSERT INTO rules (position, pattern, category_id, owner_only, account_id) VALUES (1, 'LEGACY', ?, 0, 'PER')").run(fees);
+  const memberPage = await request(app).get('/rules').set('Cookie', member);
+  assert.ok(!/Personal Amex/.test(memberPage.text), 'member does not see private account name in rule list');
+});
+
+test('rule move is owner-only; member gets 404', async () => {
+  const { app, db } = makeApp();
+  const fees = cat(db, 'Fees');
+  const owner = await login(app, 'michael', 'ownerpass1');
+  await request(app).post('/rules').set('Cookie', owner).type('form')
+    .send({ pattern: 'SHARED', category_id: String(fees) });
+  const r = db.prepare("SELECT id FROM rules WHERE pattern='SHARED'").get();
+  const member = await login(app, 'asst', 'memberpass1');
+  assert.equal((await request(app).post(`/rules/${r.id}/move`).set('Cookie', member).type('form').send({ dir: 'up' })).status, 404);
+});
+
+test('POST /accounts/:id rejects invalid visibility/kind enums', async () => {
+  const { app, db } = makeApp();
+  const owner = await login(app, 'michael', 'ownerpass1');
+  const before = db.prepare("SELECT visibility FROM accounts WHERE id='CHK'").get().visibility;
+  const res = await request(app).post('/accounts/CHK').set('Cookie', owner).type('form')
+    .send({ display_name: 'Test', visibility: 'bogus', kind: 'credit' });
+  assert.equal(res.status, 400);
+  const after = db.prepare("SELECT visibility FROM accounts WHERE id='CHK'").get().visibility;
+  assert.equal(after, before, 'visibility unchanged after invalid enum');
+  const res2 = await request(app).post('/accounts/CHK').set('Cookie', owner).type('form')
+    .send({ display_name: 'Test', visibility: 'private', kind: 'bogus' });
+  assert.equal(res2.status, 400);
+});
