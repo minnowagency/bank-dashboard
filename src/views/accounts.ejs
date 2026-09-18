@@ -1,0 +1,27 @@
+<%- include('_header', { title, reviewCount }) %>
+<h1>Accounts</h1>
+<p class="note">Private accounts are invisible to the member login. New accounts start Private.</p>
+<% accounts.forEach(a => { %>
+  <form id="f-<%= a.id %>" method="post" action="/accounts/<%= encodeURIComponent(a.id) %>"></form>
+<% }) %>
+<div class="tablewrap">
+<table>
+  <tr><th>Bank name</th><th>Display name</th><th>Type</th><th>Visibility</th><th class="num">Balance</th><th></th></tr>
+  <% accounts.forEach(a => { %>
+    <tr>
+      <td><%= a.name %> <span class="note"><%= a.org_name || '' %></span></td>
+      <td><input form="f-<%= a.id %>" name="display_name" value="<%= a.display_name || '' %>" size="14"></td>
+      <td><select form="f-<%= a.id %>" name="kind">
+        <option value="bank" <%= a.kind === 'bank' ? 'selected' : '' %>>bank</option>
+        <option value="credit" <%= a.kind === 'credit' ? 'selected' : '' %>>credit card</option></select></td>
+      <td><select form="f-<%= a.id %>" name="visibility">
+        <option value="company" <%= a.visibility === 'company' ? 'selected' : '' %>>Company</option>
+        <option value="private" <%= a.visibility === 'private' ? 'selected' : '' %>>Private 🔒</option></select></td>
+      <td class="num"><%= fmtUSD(a.balance_cents) %></td>
+      <td><button form="f-<%= a.id %>" class="primary">Save</button></td>
+    </tr>
+  <% }) %>
+</table>
+</div>
+<p class="note">Forms use the HTML5 <code>form</code> attribute because a form element cannot legally span table cells.</p>
+<%- include('_footer') %>

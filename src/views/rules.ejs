@@ -1,0 +1,48 @@
+<%- include('_header', { title, reviewCount }) %>
+<h1>Rules</h1>
+<p class="note">First matching rule wins, top to bottom. Rules only categorize transactions that have no category yet.</p>
+<div class="tablewrap">
+<table>
+  <tr><th></th><th>Pattern</th><th>Account</th><th class="num">Amount</th><th>Category</th><th class="num">Matches</th><th></th></tr>
+  <% rules.forEach(r => { %>
+    <tr>
+      <td>
+        <form method="post" action="/rules/<%= r.id %>/move" class="inline"><input type="hidden" name="dir" value="up"><button>↑</button></form>
+        <form method="post" action="/rules/<%= r.id %>/move" class="inline"><input type="hidden" name="dir" value="down"><button>↓</button></form>
+      </td>
+      <td>"<%= r.pattern %>"<% if (r.owner_only) { %> 🔒<% } %></td>
+      <td><%= r.account_name || 'any' %></td>
+      <td class="num"><%= r.amount_cents === null ? 'any' : fmtUSD(r.amount_cents) %></td>
+      <td><%= r.category_name %></td>
+      <td class="num"><%= r.matches %></td>
+      <td><form method="post" action="/rules/<%= r.id %>/delete" class="inline"><button>Delete</button></form></td>
+    </tr>
+  <% }) %>
+</table>
+</div>
+
+<h2>Add rule</h2>
+<form method="post" action="/rules" class="filters">
+  <label>Description contains <input name="pattern" required></label>
+  <label>Account <select name="account_id"><option value="">any</option>
+    <% accounts.forEach(a => { %><option value="<%= a.id %>"><%= a.display_name || a.name %></option><% }) %></select></label>
+  <label>Exact amount <input name="amount" size="8" placeholder="optional"></label>
+  <label>Category <select name="category_id"><% categories.forEach(c => { %><option value="<%= c.id %>"><%= c.name %></option><% }) %></select></label>
+  <% if (user.role === 'owner') { %><label><input type="checkbox" name="owner_only" value="1"> Only I can see this rule</label><% } %>
+  <button class="primary">Add</button>
+</form>
+
+<h2>Categories</h2>
+<div class="tablewrap">
+<table>
+  <% categories.forEach(c => { %>
+    <tr><td><%= c.name %></td>
+      <td><form method="post" action="/categories/<%= c.id %>/rename" class="inline">
+        <input name="name" value="<%= c.name %>" size="16"><button>Rename</button></form></td></tr>
+  <% }) %>
+</table>
+</div>
+<form method="post" action="/categories" class="filters">
+  <label>New category <input name="name" required></label><button class="primary">Add</button>
+</form>
+<%- include('_footer') %>
