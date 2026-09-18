@@ -191,6 +191,7 @@ function registerRoutes(app, db) {
     const pattern = String(req.body.pattern || '').trim();
     const categoryId = Number(req.body.category_id);
     if (!pattern || !categoryId) return res.status(400).send('Pattern and category required');
+    if (!validateCategoryId(db, categoryId)) return res.status(400).send('Unknown category');
     let amountCents = null;
     if (req.body.amount && String(req.body.amount).trim()) {
       try { amountCents = toCents(req.body.amount); } catch { return res.status(400).send('Bad amount'); }
