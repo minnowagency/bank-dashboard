@@ -61,16 +61,34 @@ Visit https://<droplet-ip>/ — expect a valid padlock. If Caddy logs show ACME 
 cert, switch /etc/caddy/Caddyfile to the sslip.io variant and reload.
 
 ## 7. Backups
+In the DigitalOcean control panel: create a Space (Spaces Object Storage, any
+region, File Listing: Restricted), then a Spaces access key scoped to that
+Space with Read/Write/Delete. Then, on the droplet as root:
 ```bash
 mkdir -p /etc/bank-dashboard
 openssl rand -base64 32 > /etc/bank-dashboard/backup.pass && chmod 600 /etc/bank-dashboard/backup.pass
-# Save a copy of backup.pass somewhere safe OFF the droplet (password manager) —
-# without it, backups are unrecoverable.
-rclone config   # create remote named 'spaces' → DigitalOcean Spaces, with a Space named bank-dashboard-backups
+# Save a copy of backup.pass OFF the droplet (password manager) — without it,
+# backups are unrecoverable:  cat /etc/bank-dashboard/backup.pass
+cp deploy/backup-setup.sh /usr/local/sbin/bank-backup-setup && chmod 700 /usr/local/sbin/bank-backup-setup
 cp deploy/backup.sh /usr/local/bin/bank-backup && chmod +x /usr/local/bin/bank-backup
-( crontab -l 2>/dev/null; echo '17 3 * * * /usr/local/bin/bank-backup' ) | crontab -
-/usr/local/bin/bank-backup   # run once, verify the object appears in Spaces
+bank-backup-setup   # prompts for region, Space name, key ID, secret (hidden)
+( crontab -l 2>/dev/null; echo '17 3 * * * /usr/local/bin/bank-backup >> /var/log/bank-backup.log 2>&1' ) | crontab -
+/usr/local/bin/bank-backup   # run once; prints "ok bank-<stamp>.sqlite3.gpg"
 ```
+
+### Restoring from a backup
+```bash
+rclone lsf bankbackup:                       # pick a file
+rclone copy bankbackup:bank-<stamp>.sqlite3.gpg /root/
+gpg --batch --decrypt --passphrase-file /etc/bank-dashboard/backup.pass \
+    -o /root/restore.sqlite3 /root/bank-<stamp>.sqlite3.gpg
+systemctl stop bank-dashboard
+cp /root/restore.sqlite3 /opt/bank-dashboard/data/bank.sqlite3
+rm -f /opt/bank-dashboard/data/bank.sqlite3-wal /opt/bank-dashboard/data/bank.sqlite3-shm
+chown bankdash:bankdash /opt/bank-dashboard/data/bank.sqlite3
+systemctl start bank-dashboard
+```
+On a brand-new droplet, recreate backup.pass from your password-manager copy first.
 
 ## 8. Link the rest of the connections
 At bridge.simplefin.org, add the remaining nine Truist logins, the company Amex, and the
