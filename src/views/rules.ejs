@@ -1,5 +1,12 @@
 <%- include('_header', { title, reviewCount }) %>
 <h1>Rules</h1>
+<% if (user.role === 'owner') { %>
+  <form method="post" action="/settings/ai" class="filters">
+    <input type="hidden" name="enabled" value="<%= aiOn ? '0' : '1' %>">
+    <span>Categorize new transactions with AI: <strong><%= aiOn ? 'on' : 'off' %></strong></span>
+    <button><%= aiOn ? 'Turn off' : 'Turn on' %></button>
+  </form>
+<% } %>
 <p class="note">First matching rule wins, top to bottom. Rules only categorize transactions that have no category yet.</p>
 <% rules.forEach(r => { %>
   <form id="re-<%= r.id %>" method="post" action="/rules/<%= r.id %>/edit"></form>

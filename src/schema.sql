@@ -53,12 +53,15 @@ CREATE TABLE IF NOT EXISTS transactions (
   pending INTEGER NOT NULL DEFAULT 0,
   card_member TEXT,
   category_id INTEGER REFERENCES categories(id),
-  category_source TEXT CHECK (category_source IN ('rule','manual','transfer')),
+  category_source TEXT CHECK (category_source IN ('rule','manual','transfer','ai')),
   categorized_by INTEGER REFERENCES users(id),
   rule_id INTEGER REFERENCES rules(id) ON DELETE SET NULL,
   note TEXT,
   note_by INTEGER REFERENCES users(id),
   transfer_pair_uid TEXT,
+  suggested_category_id INTEGER REFERENCES categories(id),  -- AI suggestion awaiting review
+  ai_confidence TEXT,
+  ai_reason TEXT,
   first_seen_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_txn_account_posted ON transactions(account_id, posted_at);

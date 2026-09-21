@@ -71,7 +71,8 @@
       <td><%- include('_txn_detail', { t, categories }) %></td>
       <td><%= t.account_name %></td>
       <td><%= t.card_member || '' %></td>
-      <td><%= t.category_name || '—' %></td>
+      <td><%= t.category_name || '—' %><% if (t.category_source === 'ai') { %>
+        <span class="ai-badge" title="<%= t.ai_reason || 'Categorized automatically' %>">AI</span><% } %></td>
       <td class="num <%= t.amount_cents < 0 ? 'neg' : 'pos' %>"><%= fmtUSD(t.amount_cents) %></td>
     </tr>
   <% }) %>

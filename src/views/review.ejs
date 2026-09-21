@@ -7,13 +7,14 @@
   <% rows.forEach(t => { %>
     <tr>
       <td><%= fmtDate(t.posted_at) %></td>
-      <td><%= t.description %></td>
+      <td><%= t.description %><% if (t.ai_reason) { %>
+        <div class="note">💡 <%= t.ai_reason %></div><% } %></td>
       <td><%= t.account_name %></td>
       <td class="num <%= t.amount_cents < 0 ? 'neg' : 'pos' %>"><%= fmtUSD(t.amount_cents) %></td>
       <td>
         <form method="post" action="/txns/<%= encodeURIComponent(t.uid) %>/category">
-          <select name="category_id"><option value="">— choose —</option><% categories.forEach(c => { %><option value="<%= c.id %>"><%= c.name %></option><% }) %></select>
-          <button>Save</button>
+          <select name="category_id"><option value="">— choose —</option><% categories.forEach(c => { %><option value="<%= c.id %>" <%= t.suggested_category_id === c.id ? 'selected' : '' %>><%= c.name %></option><% }) %></select>
+          <button><%= t.suggested_category_id ? 'Accept' : 'Save' %></button>
         </form>
       </td>
       <td>

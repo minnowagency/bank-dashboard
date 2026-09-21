@@ -2,16 +2,20 @@
   "name": "bank-dashboard",
   "private": true,
   "version": "0.1.0",
-  "engines": { "node": ">=22.13" },
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "test": "node --test \"test/*.test.js\"",
     "start": "node bin/serve.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.127.0",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.6",
     "ejs": "^3.1.10",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "supertest": "^7.0.0"

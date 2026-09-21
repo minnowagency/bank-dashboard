@@ -7,7 +7,8 @@ function guessKind(orgName, name) {
   return /american express|amex|card/i.test(`${orgName} ${name}`) ? 'credit' : 'bank';
 }
 
-async function runSync(db, { accessUrl, fetchAccountsFn, now = () => Math.floor(Date.now() / 1000) }) {
+async function runSync(db, { accessUrl, fetchAccountsFn, aiCategorizeFn = null, log = () => {},
+                            now = () => Math.floor(Date.now() / 1000) }) {
   const startedAt = now();
   const runId = db.prepare('INSERT INTO sync_runs (started_at) VALUES (?)').run(startedAt).lastInsertRowid;
   try {
@@ -65,8 +66,15 @@ async function runSync(db, { accessUrl, fetchAccountsFn, now = () => Math.floor(
 
     const transferPairs = detectTransfers(db);
     const ruleMatches = applyRulesToUncategorized(db);
+    // The AI step is best-effort: a failure leaves rows uncategorized for the
+    // review queue rather than failing the sync.
+    let ai = null;
+    if (aiCategorizeFn) {
+      try { ai = await aiCategorizeFn(db); }
+      catch (err) { log(`[ai] step failed: ${String((err && err.message) || err)}`); }
+    }
     db.prepare('UPDATE sync_runs SET finished_at = ?, ok = 1 WHERE id = ?').run(now(), runId);
-    return { ok: true, errors, newTransactions, transferPairs, ruleMatches };
+    return { ok: true, errors, newTransactions, transferPairs, ruleMatches, ai };
   } catch (err) {
     db.prepare('UPDATE sync_runs SET finished_at = ?, ok = 0, error = ? WHERE id = ?')
       .run(now(), String((err && err.message) || err), runId);

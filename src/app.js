@@ -74,6 +74,12 @@ function staleness(db, user) {
   return { stale, errors };
 }
 
+// AI categorization defaults to on; the owner can switch it off from /rules.
+function aiEnabled(db) {
+  const row = db.prepare("SELECT value FROM settings WHERE key='ai_enabled'").get();
+  return !row || row.value === '1';
+}
+
 function registerRoutes(app, db) {
   function visibleTxn(db, user, uid) {
     const t = db.prepare(`SELECT t.*, a.visibility, a.hidden FROM transactions t
@@ -110,11 +116,12 @@ function registerRoutes(app, db) {
     const cid = req.body.category_id ? Number(req.body.category_id) : null;
     if (cid === null) {
       db.prepare(`UPDATE transactions SET category_id=NULL, category_source=NULL,
-                  categorized_by=NULL, rule_id=NULL WHERE uid=?`).run(t.uid);
+                  categorized_by=NULL, rule_id=NULL, suggested_category_id=NULL WHERE uid=?`).run(t.uid);
     } else {
       if (!validateCategoryId(db, cid)) return res.status(400).send('Unknown category');
       db.prepare(`UPDATE transactions SET category_id=?, category_source='manual',
-                  categorized_by=?, rule_id=NULL WHERE uid=?`).run(cid, req.user.id, t.uid);
+                  categorized_by=?, rule_id=NULL, suggested_category_id=NULL WHERE uid=?`)
+        .run(cid, req.user.id, t.uid);
     }
     back(req, res);
   });
@@ -187,7 +194,7 @@ function registerRoutes(app, db) {
     }));
     const categories = db.prepare('SELECT * FROM categories ORDER BY name').all();
     res.render('rules', { title: 'Rules', rules, categories,
-      accounts: visAccts, reviewCount: reviewCount(db, req.user) });
+      accounts: visAccts, aiOn: aiEnabled(db), reviewCount: reviewCount(db, req.user) });
   });
 
   app.post('/rules', (req, res) => {
@@ -299,6 +306,13 @@ function registerRoutes(app, db) {
     res.redirect('/rules');
   });
 
+  app.post('/settings/ai', ownerOnly, (req, res) => {
+    const value = req.body.enabled === '1' ? '1' : '0';
+    db.prepare(`INSERT INTO settings (key, value) VALUES ('ai_enabled', ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(value);
+    res.redirect('/rules');
+  });
+
   app.get('/accounts', ownerOnly, (req, res) => {
     const accounts = db.prepare('SELECT * FROM accounts ORDER BY kind, COALESCE(display_name, name)').all();
     res.render('accounts', { title: 'Accounts', accounts, reviewCount: reviewCount(db, req.user) });
@@ -336,4 +350,4 @@ function registerRoutes(app, db) {
   });
 }
 
-module.exports = { createApp };
+module.exports = { createApp, aiEnabled };

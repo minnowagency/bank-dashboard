@@ -36,3 +36,5 @@ details.rowdetail { margin:0; } details.rowdetail summary { cursor:pointer; list
 .detail-forms { display:flex; gap:12px; flex-wrap:wrap; padding:8px 0; }
 .tablewrap { overflow-x:auto; }
 tr.hidden-acct td { opacity: .5; }
+.ai-badge { font-size:9px; font-weight:700; letter-spacing:.04em; padding:1px 5px; border-radius:999px;
+            background:#e7f0fb; color:#1f4f8a; vertical-align:middle; cursor:help; }

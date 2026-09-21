@@ -5,6 +5,8 @@ const { createApp } = require('../src/app');
 const { runSync } = require('../src/sync');
 const { fetchAccounts } = require('../src/simplefin');
 const { startScheduler } = require('../src/scheduler');
+const { aiEnabled } = require('../src/app');
+const { categorizeUncategorized } = require('../src/ai-categorize');
 
 const config = loadConfig();
 if (!config.accessUrl) {
@@ -26,9 +28,31 @@ function redact(text) {
 
 const db = openDb(config.dbPath);
 
+// AI categorization runs only when a key is present and the owner hasn't
+// switched it off. Without it, unmatched transactions just await review.
+let anthropic = null;
+if (process.env.ANTHROPIC_API_KEY) {
+  const Anthropic = require('@anthropic-ai/sdk');
+  anthropic = new Anthropic();
+  console.log('[ai] categorization available');
+} else {
+  console.log('[ai] no ANTHROPIC_API_KEY set; skipping AI categorization');
+}
+
+const aiCategorizeFn = anthropic
+  ? async (database) => {
+      if (!aiEnabled(database)) return null;
+      const r = await categorizeUncategorized(database, { client: anthropic, log: console.log });
+      console.log(`[ai] applied=${r.applied} suggested=${r.suggested} failed=${r.failed} ` +
+        `batches=${r.batches} tokens=${r.inputTokens}/${r.outputTokens}`);
+      return r;
+    }
+  : null;
+
 startScheduler({
   run: async () => {
-    const r = await runSync(db, { accessUrl: config.accessUrl, fetchAccountsFn: fetchAccounts });
+    const r = await runSync(db, { accessUrl: config.accessUrl, fetchAccountsFn: fetchAccounts,
+      aiCategorizeFn, log: console.log });
     console.log(`[sync] ok=${r.ok} new=${r.newTransactions || 0} errors=${redact(JSON.stringify(r.errors))}`);
     return r;
   },
