@@ -19,6 +19,7 @@ function loadConfig({ envFile = '.env' } = {}) {
     port: Number(get('PORT', 3000)),
     host: get('HOST', '127.0.0.1'),
     accessUrl: get('SIMPLEFIN_ACCESS_URL', ''),
+    anthropicApiKey: get('ANTHROPIC_API_KEY', ''),
     cookieSecure: get('NODE_ENV', '') === 'production',
   };
 }

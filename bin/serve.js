@@ -31,9 +31,9 @@ const db = openDb(config.dbPath);
 // AI categorization runs only when a key is present and the owner hasn't
 // switched it off. Without it, unmatched transactions just await review.
 let anthropic = null;
-if (process.env.ANTHROPIC_API_KEY) {
+if (config.anthropicApiKey) {
   const Anthropic = require('@anthropic-ai/sdk');
-  anthropic = new Anthropic();
+  anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
   console.log('[ai] categorization available');
 } else {
   console.log('[ai] no ANTHROPIC_API_KEY set; skipping AI categorization');

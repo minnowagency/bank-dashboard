@@ -90,6 +90,20 @@ systemctl start bank-dashboard
 ```
 On a brand-new droplet, recreate backup.pass from your password-manager copy first.
 
+## 7b. AI categorization (optional)
+Create an API key at console.anthropic.com, then on the droplet as root:
+```bash
+cp deploy/set-api-key.sh /usr/local/sbin/bank-set-api-key && chmod 700 /usr/local/sbin/bank-set-api-key
+bank-set-api-key            # hidden prompt; writes ANTHROPIC_API_KEY into .env (mode 600)
+systemctl restart bank-dashboard
+journalctl -u bank-dashboard -f   # watch "[ai] applied=… suggested=… failed=…"
+```
+Only five fields per transaction leave the server (a batch reference number, date,
+amount, digit-masked description, and a "cardholder A" label) — enforced by
+test/ai-categorize.test.js. Rules and manual categories always win; hidden accounts
+are skipped. The owner can switch the feature off on the /rules page, and with no key
+present the app simply leaves unmatched transactions for the review queue.
+
 ## 8. Link the rest of the connections
 At bridge.simplefin.org, add the remaining nine Truist logins, the company Amex, and the
 personal Amex. They appear on the dashboard after the next sync (or restart the service to
