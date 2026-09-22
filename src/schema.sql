@@ -99,3 +99,11 @@ CREATE TABLE IF NOT EXISTS recurring_items (
   updated_at INTEGER NOT NULL,
   UNIQUE (account_id, merchant_key, kind)
 );
+
+CREATE TABLE IF NOT EXISTS senders (
+  last4 TEXT PRIMARY KEY,              -- last four digits of the originating account
+  name TEXT NOT NULL,                  -- who that account belongs to ("hppyc")
+  category_id INTEGER NOT NULL REFERENCES categories(id),
+  created_by INTEGER REFERENCES users(id),
+  created_at INTEGER NOT NULL
+);

@@ -119,10 +119,34 @@
   <div class="feed">
     <% g.rows.forEach(t => { %>
       <div class="row <%= t.pending ? 'pending' : '' %>" data-uid="<%= t.uid %>">
-        <div>
-          <div class="desc"><%= t.description %></div>
-          <div class="sub"><%= t.account_name %><% if (t.card_member) { %> · <%= t.card_member %><% } %><% if (t.note) { %> · 📝 <%= t.note %><% } %></div>
-        </div>
+        <details class="rowdetail">
+          <summary>
+            <div class="desc"><%= t.description %><% if (t.sender_name) { %> <span class="note">· from <%= t.sender_name %></span><% } %></div>
+            <div class="sub"><%= t.account_name %><% if (t.card_member) { %> · <%= t.card_member %><% } %><% if (t.note) { %> · 📝 <%= t.note %><% } %></div>
+          </summary>
+          <div class="detail">
+            <form method="post" action="/txns/<%= encodeURIComponent(t.uid) %>/note" class="inline">
+              <input name="note" value="<%= t.note || '' %>" placeholder="note" size="22"><button>Save note</button>
+            </form>
+            <form method="post" action="/txns/<%= encodeURIComponent(t.uid) %>/make-rule" class="inline">
+              <input name="pattern" value="<%= t.description %>" size="18">
+              <select name="category_id"><% categories.forEach(c => { %><option value="<%= c.id %>"><%= c.name %></option><% }) %></select>
+              <button>+ Rule</button>
+            </form>
+            <% if (t.sender_last4) { %>
+              <form method="post" action="/senders" class="inline" title="Label the account that sent this wire; applies to every payment from it">
+                <input type="hidden" name="uid" value="<%= t.uid %>">
+                <input type="hidden" name="last4" value="<%= t.sender_last4 %>">
+                <span class="note">From account *<%= t.sender_last4 %>:</span>
+                <input name="name" value="<%= t.sender_name || '' %>" placeholder="who is this?" size="12" required>
+                <select name="category_id">
+                  <% categories.forEach(c => { %><option value="<%= c.id %>" <%= (c.name === 'Revenue' && !t.sender_name) ? 'selected' : '' %>><%= c.name === 'Revenue' ? 'Revenue (product sales)' : c.name %></option><% }) %>
+                </select>
+                <button class="primary"><%= t.sender_name ? 'Update sender' : 'Label sender' %></button>
+              </form>
+            <% } %>
+          </div>
+        </details>
         <div class="catcell">
           <select class="cat-pill js-cat <%= t.category_id ? '' : 'none' %>" data-uid="<%= t.uid %>" name="category_id" aria-label="Category">
             <option value="">— none —</option>

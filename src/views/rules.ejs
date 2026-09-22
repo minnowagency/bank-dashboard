@@ -37,6 +37,25 @@
 </table>
 </div>
 
+<h2>Senders <span class="note">— who each wire-originating account belongs to</span></h2>
+<% if (senders.length === 0) { %>
+  <div class="feed"><div class="empty">None yet. Open an inbound wire on the Overview and use "Label sender".</div></div>
+<% } else { %>
+<div class="tablewrap">
+<table>
+  <tr><th>Account</th><th>Belongs to</th><th>Filed as</th><th></th></tr>
+  <% senders.forEach(s => { %>
+    <tr>
+      <td>*<%= s.last4 %></td>
+      <td><%= s.name %></td>
+      <td><%= s.category_name %></td>
+      <td><form method="post" action="/senders/<%= s.last4 %>/delete" class="inline"><button>Remove</button></form></td>
+    </tr>
+  <% }) %>
+</table>
+</div>
+<% } %>
+
 <h2>Add rule</h2>
 <form method="post" action="/rules" class="filters">
   <label>Description contains <input name="pattern" required></label>

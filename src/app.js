@@ -57,6 +57,7 @@ function createApp(db, { cookieSecure = false } = {}) {
 
 const { feedQuery, totals, visibleAccounts, periodSummary, groupByDay } = require('./feed');
 const { forecast } = require('./recurring');
+const { applySenders, annotateSenders } = require('./senders');
 
 function reviewCount(db, user) {
   const ids = visibleAccounts(db, user).map(a => a.id);
@@ -185,6 +186,7 @@ function registerRoutes(app, db) {
   app.get('/', (req, res) => {
     const now = Math.floor(Date.now() / 1000);
     const { rows, accounts, categories, members, period } = feedQuery(db, req.user, req.query, { now });
+    annotateSenders(db, rows);
     const view = {
       title: 'Overview',
       rows, accounts, categories, members, period,
@@ -223,7 +225,9 @@ function registerRoutes(app, db) {
         : null,
     }));
     const categories = db.prepare('SELECT * FROM categories ORDER BY name').all();
-    res.render('rules', { title: 'Rules', rules, categories,
+    const senders = db.prepare(`SELECT s.*, c.name AS category_name FROM senders s
+      JOIN categories c ON c.id = s.category_id ORDER BY s.name`).all();
+    res.render('rules', { title: 'Rules', rules, categories, senders,
       accounts: visAccts, aiOn: aiEnabled(db), reviewCount: reviewCount(db, req.user), active: 'rules' });
   });
 
@@ -358,6 +362,31 @@ function registerRoutes(app, db) {
     db.prepare('UPDATE accounts SET display_name = ?, visibility = ?, kind = ?, hidden = ? WHERE id = ?')
       .run(dn, vis, kind, hidden, req.params.id);
     res.redirect('/accounts');
+  });
+
+  // ---- Sender labels ----------------------------------------------------
+  app.post('/senders', (req, res) => {
+    const last4 = String(req.body.last4 || '').trim();
+    const name = String(req.body.name || '').trim();
+    const cid = Number(req.body.category_id);
+    if (!/^\d{4}$/.test(last4) || !name) return res.status(400).send('Sender account digits and a name are required');
+    if (!validateCategoryId(db, cid)) return res.status(400).send('Unknown category');
+    // when labeling from a row, the row must be one this user can see
+    if (req.body.uid && !visibleTxn(db, req.user, String(req.body.uid))) return res.status(404).send('Not found');
+    db.prepare(`INSERT INTO senders (last4, name, category_id, created_by, created_at) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(last4) DO UPDATE SET name = excluded.name, category_id = excluded.category_id`)
+      .run(last4, name, cid, req.user.id, Math.floor(Date.now() / 1000));
+    // a relabel must move rows this sender already categorized, too
+    db.prepare(`UPDATE transactions SET category_id = NULL, category_source = NULL
+      WHERE category_source = 'rule' AND rule_id IS NULL AND amount_cents > 0 AND category_id != ?
+        AND (description LIKE ? OR description LIKE ?)`).run(cid, `%ACCT: %${last4}%`, `%FROM *${last4}%`);
+    applySenders(db);
+    back(req, res);
+  });
+
+  app.post('/senders/:last4/delete', (req, res) => {
+    db.prepare('DELETE FROM senders WHERE last4 = ?').run(String(req.params.last4));
+    res.redirect('/rules');
   });
 
   // ---- Recurring items and the forecast --------------------------------

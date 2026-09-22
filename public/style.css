@@ -138,6 +138,11 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .empty { padding: 26px; text-align: center; color: var(--dim); }
 #overview.loading { opacity: .55; transition: opacity .15s ease; }
 
+details.rowdetail > summary { cursor: pointer; list-style: none; }
+details.rowdetail > summary::-webkit-details-marker { display: none; }
+details.rowdetail[open] > summary .desc::after { content: ' ▾'; color: var(--dim); }
+.detail form.inline { display: inline-flex; gap: 6px; align-items: center; }
+
 /* Tables (rules, accounts, review) */
 .tablewrap { overflow-x: auto; background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); }
 table { width: 100%; border-collapse: collapse; }
