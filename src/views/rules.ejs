@@ -1,4 +1,4 @@
-<%- include('_header', { title, reviewCount }) %>
+<%- include('_header', { title, reviewCount, active }) %>
 <h1>Rules</h1>
 <% if (user.role === 'owner') { %>
   <form method="post" action="/settings/ai" class="filters">

@@ -1,0 +1,138 @@
+<%
+  const qs = (over) => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(filters || {})) {
+      if (k === 'partial' || v === undefined || v === null || v === '') continue;
+      p.set(k, Array.isArray(v) ? v[0] : v);
+    }
+    for (const [k, v] of Object.entries(over)) {
+      if (v === null) p.delete(k); else p.set(k, v);
+    }
+    const s = p.toString();
+    return s ? `/?${s}` : '/';
+  };
+  const pct = (now, before) => {
+    if (!before) return null;
+    return Math.round(((now - before) / before) * 100);
+  };
+%>
+<% if (staleness.stale.length > 0) { %>
+  <div class="banner">
+    <strong><%= staleness.stale.length %> account<%= staleness.stale.length > 1 ? 's have' : ' has' %> not synced in over 24 hours.</strong>
+    <% if (user.role === 'owner') { %>
+      <% staleness.errors.forEach(e => { %><div><%= e %></div><% }) %>
+      <div class="note">If a connection needs attention, re-link it at bridge.simplefin.org.</div>
+    <% } %>
+  </div>
+<% } %>
+
+<div class="strip">
+  <div class="stat">
+    <div class="l">In<span class="perlabel"> · <%= period.label %></span></div>
+    <div class="v pos"><%= fmtUSD(summary.inCents) %></div>
+    <div class="d"><% if (summary.prev && pct(summary.inCents, summary.prev.inCents) !== null) { %>
+      <%= pct(summary.inCents, summary.prev.inCents) >= 0 ? '▲' : '▼' %>
+      <%= Math.abs(pct(summary.inCents, summary.prev.inCents)) %>% vs previous
+    <% } else { %>&nbsp;<% } %></div>
+  </div>
+  <div class="stat">
+    <div class="l">Out<span class="perlabel"> · <%= period.label %></span></div>
+    <div class="v"><%= fmtUSD(summary.outCents) %></div>
+    <div class="d"><% if (summary.prev && pct(summary.outCents, summary.prev.outCents) !== null) { %>
+      <%= pct(summary.outCents, summary.prev.outCents) >= 0 ? '▲' : '▼' %>
+      <%= Math.abs(pct(summary.outCents, summary.prev.outCents)) %>% vs previous
+    <% } else { %>&nbsp;<% } %></div>
+  </div>
+  <div class="stat">
+    <div class="l">Net</div>
+    <div class="v <%= summary.netCents >= 0 ? 'pos' : '' %>"><%= fmtUSD(summary.netCents) %></div>
+    <div class="d">Cash on hand <%= fmtUSD(totals.cashCents) %></div>
+  </div>
+</div>
+
+<div class="tiles">
+  <% banks.forEach(a => { %>
+    <a class="tile <%= filters.account === a.id ? 'sel' : '' %>"
+       href="<%= qs({ account: filters.account === a.id ? null : a.id }) %>">
+      <div class="n"><%= a.display_name || a.name %><% if (a.visibility === 'private') { %> 🔒<% } %></div>
+      <div class="a"><%= fmtUSD(a.balance_cents) %></div>
+      <div class="m">synced <%= a.last_synced_at ? fmtDate(a.last_synced_at) : 'never' %></div>
+    </a>
+  <% }) %>
+</div>
+<% if (credits.length > 0) { %>
+  <h2>Credit cards<% if (totals.owedCents) { %> · <span class="owed"><%= fmtUSD(totals.owedCents) %> owed</span><% } %></h2>
+  <div class="tiles">
+    <% credits.forEach(a => { %>
+      <a class="tile <%= filters.account === a.id ? 'sel' : '' %>"
+         href="<%= qs({ account: filters.account === a.id ? null : a.id }) %>">
+        <div class="n"><%= a.display_name || a.name %><% if (a.visibility === 'private') { %> 🔒<% } %></div>
+        <div class="a owed"><%= fmtUSD(-a.balance_cents) %></div>
+        <div class="m">owed</div>
+      </a>
+    <% }) %>
+  </div>
+<% } %>
+
+<div class="chips">
+  <% [['this-month','This month'],['last-month','Last month'],['30d','30 days'],['ytd','YTD'],['all','All']].forEach(([k, label]) => { %>
+    <a class="chip <%= period.key === k ? 'on' : '' %>" href="<%= qs({ period: k, from: null, to: null }) %>"><%= label %></a>
+  <% }) %>
+</div>
+
+<form method="get" action="/" class="js-filters">
+  <input type="hidden" name="period" value="<%= period.key === 'custom' ? '' : period.key %>">
+  <div class="searchbar">
+    <input type="search" name="q" value="<%= filters.q || '' %>" placeholder="Search descriptions…" autocomplete="off">
+    <button class="primary js-hide">Search</button>
+    <a href="/export.csv?<%= new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([k]) => k !== 'partial'))).toString() %>"><button type="button">Export CSV</button></a>
+  </div>
+  <details class="more" <%= (filters.category || filters.member || filters.min || filters.max || filters.uncategorized || period.key === 'custom') ? 'open' : '' %>>
+    <summary>More filters</summary>
+    <div class="filters">
+      <label>Category
+        <select name="category"><option value="">All</option>
+          <% categories.forEach(c => { %><option value="<%= c.id %>" <%= String(filters.category) === String(c.id) ? 'selected' : '' %>><%= c.name %></option><% }) %>
+        </select></label>
+      <% if (members.length > 0) { %>
+        <label>Card member
+          <select name="member"><option value="">All</option>
+            <% members.forEach(m => { %><option value="<%= m %>" <%= filters.member === m ? 'selected' : '' %>><%= m %></option><% }) %>
+          </select></label>
+      <% } %>
+      <label>From <input type="date" name="from" value="<%= filters.from || '' %>"></label>
+      <label>To <input type="date" name="to" value="<%= filters.to || '' %>"></label>
+      <label>Min $ <input name="min" size="6" value="<%= filters.min || '' %>"></label>
+      <label>Max $ <input name="max" size="6" value="<%= filters.max || '' %>"></label>
+      <label style="flex-direction:row;align-items:center;gap:6px">
+        <input type="checkbox" name="uncategorized" value="1" <%= filters.uncategorized ? 'checked' : '' %>> Uncategorized only</label>
+      <button class="primary js-hide">Apply</button>
+    </div>
+  </details>
+</form>
+
+<% if (rows.length === 0) { %>
+  <div class="feed"><div class="empty">Nothing in this period.</div></div>
+<% } %>
+<% groups.forEach(g => { %>
+  <div class="day"><%= g.label %></div>
+  <div class="feed">
+    <% g.rows.forEach(t => { %>
+      <div class="row <%= t.pending ? 'pending' : '' %>" data-uid="<%= t.uid %>">
+        <div>
+          <div class="desc"><%= t.description %></div>
+          <div class="sub"><%= t.account_name %><% if (t.card_member) { %> · <%= t.card_member %><% } %><% if (t.note) { %> · 📝 <%= t.note %><% } %></div>
+        </div>
+        <div class="catcell">
+          <select class="cat-pill js-cat <%= t.category_id ? '' : 'none' %>" data-uid="<%= t.uid %>" name="category_id" aria-label="Category">
+            <option value="">— none —</option>
+            <% categories.forEach(c => { %><option value="<%= c.id %>" <%= t.category_id === c.id ? 'selected' : (!t.category_id && t.suggested_category_id === c.id ? 'selected' : '') %>><%= c.name %></option><% }) %>
+          </select>
+          <% if (t.category_source === 'ai') { %><span class="ai-badge" title="<%= t.ai_reason || 'Categorized automatically' %>">AI</span><% } %>
+          <% if (!t.category_id && t.suggested_category_id) { %><span class="ai-badge" title="<%= t.ai_reason || 'Suggested' %>">?</span><% } %>
+        </div>
+        <div class="amt <%= t.amount_cents < 0 ? '' : 'pos' %>"><%= fmtUSD(t.amount_cents) %></div>
+      </div>
+    <% }) %>
+  </div>
+<% }) %>

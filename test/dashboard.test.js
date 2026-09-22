@@ -6,7 +6,7 @@ const { makeApp, login, T0 } = require('./helpers');
 test('owner dashboard shows all accounts, totals, and private rows', async () => {
   const { app } = makeApp();
   const cookie = await login(app, 'michael', 'ownerpass1');
-  const res = await request(app).get('/').set('Cookie', cookie);
+  const res = await request(app).get('/?period=all').set('Cookie', cookie);
   assert.equal(res.status, 200);
   assert.match(res.text, /Ops/);                 // display_name preferred
   assert.match(res.text, /Personal Amex/);       // owner sees private
@@ -18,7 +18,7 @@ test('owner dashboard shows all accounts, totals, and private rows', async () =>
 test('member dashboard: private account absent everywhere', async () => {
   const { app } = makeApp();
   const cookie = await login(app, 'asst', 'memberpass1');
-  const res = await request(app).get('/').set('Cookie', cookie);
+  const res = await request(app).get('/?period=all').set('Cookie', cookie);
   assert.equal(res.status, 200);
   assert.ok(!/Personal Amex/.test(res.text));
   assert.ok(!/PERSONAL DINNER/.test(res.text));
@@ -28,7 +28,7 @@ test('member dashboard: private account absent everywhere', async () => {
 test('filters flow through querystring', async () => {
   const { app } = makeApp();
   const cookie = await login(app, 'michael', 'ownerpass1');
-  const res = await request(app).get('/?q=ups').set('Cookie', cookie);
+  const res = await request(app).get('/?period=all&q=ups').set('Cookie', cookie);
   assert.match(res.text, /UPS FREIGHT/);
   assert.ok(!/STRIPE PAYOUT/.test(res.text));
 });
@@ -42,7 +42,7 @@ test('stale accounts produce a warning banner', async () => {
   Date.now = () => T0 * 1000; // freeze time so staleness is deterministic
   try {
     const cookie = await login(app, 'michael', 'ownerpass1');
-    const res = await request(app).get('/').set('Cookie', cookie);
+    const res = await request(app).get('/?period=all').set('Cookie', cookie);
     assert.match(res.text, /has not synced in over 24 hours/);
     assert.match(res.text, /Connection to Truist may need attention/);
   } finally { Date.now = realNow; }
@@ -57,7 +57,7 @@ test('member does not see sync error details (privacy)', async () => {
   Date.now = () => T0 * 1000;
   try {
     const cookie = await login(app, 'asst', 'memberpass1');
-    const res = await request(app).get('/').set('Cookie', cookie);
+    const res = await request(app).get('/?period=all').set('Cookie', cookie);
     assert.match(res.text, /not synced in over 24 hours/);
     assert.ok(!/Connection to Truist may need attention/.test(res.text));
   } finally { Date.now = realNow; }

@@ -1,31 +1,60 @@
-<%- include('_header', { title, reviewCount }) %>
-<h1>Needs review (<%= rows.length %>)</h1>
-<% if (rows.length === 0) { %><p class="note">Nothing to review. 🎉</p><% } %>
-<div class="tablewrap">
-<table>
-  <tr><th>Date</th><th>Description</th><th>Account</th><th class="num">Amount</th><th>Categorize</th><th>Make rule</th></tr>
-  <% rows.forEach(t => { %>
+<%- include('_header', { title, reviewCount, active }) %>
+<h1>Needs review <span class="note">(<%= rows.length %>)</span></h1>
+<% if (rows.length === 0) { %>
+  <div class="feed"><div class="empty">Nothing to review. 🎉</div></div>
+<% } else { %>
+<p class="note">Tick several to categorize them together, or set one at a time. A ? marks an AI suggestion — the button says Accept when one is waiting.</p>
+<form method="post" action="/txns/bulk-category" id="bulkform">
+  <div class="tablewrap">
+  <table>
     <tr>
-      <td><%= fmtDate(t.posted_at) %></td>
-      <td><%= t.description %><% if (t.ai_reason) { %>
-        <div class="note">💡 <%= t.ai_reason %></div><% } %></td>
-      <td><%= t.account_name %></td>
-      <td class="num <%= t.amount_cents < 0 ? 'neg' : 'pos' %>"><%= fmtUSD(t.amount_cents) %></td>
-      <td>
-        <form method="post" action="/txns/<%= encodeURIComponent(t.uid) %>/category">
-          <select name="category_id"><option value="">— choose —</option><% categories.forEach(c => { %><option value="<%= c.id %>" <%= t.suggested_category_id === c.id ? 'selected' : '' %>><%= c.name %></option><% }) %></select>
-          <button><%= t.suggested_category_id ? 'Accept' : 'Save' %></button>
-        </form>
-      </td>
-      <td>
-        <form method="post" action="/txns/<%= encodeURIComponent(t.uid) %>/make-rule">
-          <input name="pattern" value="<%= t.description %>" size="18">
-          <select name="category_id"><option value="">— choose —</option><% categories.forEach(c => { %><option value="<%= c.id %>"><%= c.name %></option><% }) %></select>
-          <button>+ Rule</button>
-        </form>
-      </td>
+      <th style="width:28px"><input type="checkbox" id="selectall" aria-label="Select all"></th>
+      <th>Date</th><th>Description</th><th>Account</th><th class="num">Amount</th><th>Category</th>
     </tr>
+    <% rows.forEach(t => { %>
+      <tr>
+        <td><input type="checkbox" name="uids" value="<%= t.uid %>" aria-label="Select transaction"></td>
+        <td class="note"><%= fmtDate(t.posted_at) %></td>
+        <td><%= t.description %>
+          <% if (t.ai_reason) { %><div class="note">💡 <%= t.ai_reason %></div><% } %></td>
+        <td class="note"><%= t.account_name %><% if (t.card_member) { %> · <%= t.card_member %><% } %></td>
+        <td class="num <%= t.amount_cents < 0 ? '' : 'pos' %>"><%= fmtUSD(t.amount_cents) %></td>
+        <td>
+          <span class="inline">
+            <select class="cat-pill js-cat <%= t.suggested_category_id ? '' : 'none' %>" data-uid="<%= t.uid %>" aria-label="Category">
+              <option value="">— choose —</option>
+              <% categories.forEach(c => { %><option value="<%= c.id %>" <%= t.suggested_category_id === c.id ? 'selected' : '' %>><%= c.name %></option><% }) %>
+            </select>
+            <% if (t.suggested_category_id) { %><span class="ai-badge" title="<%= t.ai_reason || 'Suggested' %>">?</span><% } %>
+          </span>
+        </td>
+      </tr>
+    <% }) %>
+  </table>
+  </div>
+
+  <div class="bulkbar" id="bulkbar" hidden>
+    <span class="count" id="bulkcount">0 selected</span>
+    <select name="category_id" aria-label="Category for selected">
+      <% categories.forEach(c => { %><option value="<%= c.id %>"><%= c.name %></option><% }) %>
+    </select>
+    <button class="primary">Apply</button>
+  </div>
+</form>
+
+<noscript>
+  <p class="note">With JavaScript off, use the per-row form below each transaction instead.</p>
+  <% rows.forEach(t => { %>
+    <form method="post" action="/txns/<%= encodeURIComponent(t.uid) %>/category" class="filters" style="margin:6px 0">
+      <span><%= fmtDate(t.posted_at) %> · <%= t.description %> · <%= fmtUSD(t.amount_cents) %></span>
+      <select name="category_id">
+        <option value="">— choose —</option>
+        <% categories.forEach(c => { %><option value="<%= c.id %>" <%= t.suggested_category_id === c.id ? 'selected' : '' %>><%= c.name %></option><% }) %>
+      </select>
+      <button class="primary"><%= t.suggested_category_id ? 'Accept' : 'Save' %></button>
+    </form>
   <% }) %>
-</table>
-</div>
+</noscript>
+<% } %>
+<script src="/static/app.js" defer></script>
 <%- include('_footer') %>

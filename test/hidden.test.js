@@ -34,11 +34,11 @@ test('hiding an account removes it from dashboard, totals, review, export, and r
   const owner = await login(app, 'michael', 'ownerpass1');
   assert.equal((await hide(app, owner, 'CHK', { display_name: 'Ops' })).status, 302);
 
-  const dash = await request(app).get('/').set('Cookie', owner);
+  const dash = await request(app).get('/?period=all').set('Cookie', owner);
   assert.ok(!/UPS FREIGHT/.test(dash.text));
   assert.ok(!/STRIPE PAYOUT/.test(dash.text));
   assert.ok(!/>Ops</.test(dash.text));
-  assert.match(dash.text, /Total cash: <strong>\$0\.00/);
+  assert.match(dash.text, /Cash on hand \$0\.00/);
   assert.match(dash.text, /DELTA AIR/); // other accounts unaffected
 
   const review = await request(app).get('/review').set('Cookie', owner);
@@ -47,7 +47,7 @@ test('hiding an account removes it from dashboard, totals, review, export, and r
   const csv = await request(app).get('/export.csv').set('Cookie', owner);
   assert.ok(!/UPS FREIGHT/.test(csv.text));
 
-  const direct = await request(app).get('/?account=CHK').set('Cookie', owner);
+  const direct = await request(app).get('/?period=all&account=CHK').set('Cookie', owner);
   assert.ok(!/UPS FREIGHT/.test(direct.text)); // can't reach it via the filter either
 });
 
@@ -56,7 +56,7 @@ test('hidden accounts are hidden from the member too, and actions on their trans
   const owner = await login(app, 'michael', 'ownerpass1');
   await hide(app, owner, 'CHK');
   const member = await login(app, 'asst', 'memberpass1');
-  assert.ok(!/UPS FREIGHT/.test((await request(app).get('/').set('Cookie', member)).text));
+  assert.ok(!/UPS FREIGHT/.test((await request(app).get('/?period=all').set('Cookie', member)).text));
   const res = await request(app).post('/txns/CHK|1/note').set('Cookie', owner).type('form').send({ note: 'x' });
   assert.equal(res.status, 404);
   assert.equal(db.prepare("SELECT note FROM transactions WHERE uid='CHK|1'").get().note, null);
@@ -73,7 +73,7 @@ test('accounts page still lists a hidden account and un-hiding restores it', asy
   await request(app).post('/accounts/CHK').set('Cookie', owner).type('form')
     .send({ display_name: 'Ops', visibility: 'company', kind: 'bank' }); // checkbox unticked → absent
   assert.equal(db.prepare("SELECT hidden FROM accounts WHERE id='CHK'").get().hidden, 0);
-  assert.match((await request(app).get('/').set('Cookie', owner)).text, /UPS FREIGHT/);
+  assert.match((await request(app).get('/?period=all').set('Cookie', owner)).text, /UPS FREIGHT/);
 });
 
 test('sync never un-hides an account', async () => {

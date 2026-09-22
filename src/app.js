@@ -55,7 +55,7 @@ function createApp(db, { cookieSecure = false } = {}) {
   return app;
 }
 
-const { feedQuery, totals, visibleAccounts } = require('./feed');
+const { feedQuery, totals, visibleAccounts, periodSummary, groupByDay } = require('./feed');
 
 function reviewCount(db, user) {
   const ids = visibleAccounts(db, user).map(a => a.id);
@@ -92,6 +92,7 @@ function registerRoutes(app, db) {
     if (!Number.isInteger(cid)) return false;
     return db.prepare('SELECT id FROM categories WHERE id = ?').get(cid) != null;
   }
+  const wantsJson = (req) => String(req.get('accept') || '').includes('application/json');
   const back = (req, res) => {
     const ref = req.get('referer');
     if (!ref) return res.redirect('/');
@@ -123,6 +124,10 @@ function registerRoutes(app, db) {
                   categorized_by=?, rule_id=NULL, suggested_category_id=NULL WHERE uid=?`)
         .run(cid, req.user.id, t.uid);
     }
+    if (wantsJson(req)) {
+      const name = cid ? db.prepare('SELECT name FROM categories WHERE id=?').get(cid).name : null;
+      return res.json({ ok: true, uid: t.uid, category_id: cid, category_name: name });
+    }
     back(req, res);
   });
 
@@ -148,6 +153,23 @@ function registerRoutes(app, db) {
     back(req, res);
   });
 
+  app.post('/txns/bulk-category', (req, res) => {
+    const cid = Number(req.body.category_id);
+    if (!validateCategoryId(db, cid)) return res.status(400).send('Unknown category');
+    const uids = [].concat(req.body.uids || []).map(String);
+    const set = db.prepare(`UPDATE transactions SET category_id=?, category_source='manual',
+      categorized_by=?, rule_id=NULL, suggested_category_id=NULL WHERE uid=? AND category_id IS NULL`);
+    let applied = 0;
+    db.transaction(() => {
+      for (const uid of uids) {
+        // rows this user cannot see are skipped silently, never an error
+        if (visibleTxn(db, req.user, uid) && set.run(cid, req.user.id, uid).changes) applied++;
+      }
+    })();
+    if (wantsJson(req)) return res.json({ ok: true, applied });
+    back(req, res);
+  });
+
   app.get('/review', (req, res) => {
     const ids = visibleAccounts(db, req.user).map(a => a.id);
     const rows = ids.length === 0 ? [] : db.prepare(`
@@ -156,21 +178,28 @@ function registerRoutes(app, db) {
       WHERE t.category_id IS NULL AND t.account_id IN (${ids.map(() => '?').join(',')})
       ORDER BY t.posted_at ASC LIMIT 200`).all(...ids);
     const categories = db.prepare('SELECT * FROM categories ORDER BY name').all();
-    res.render('review', { title: 'Review', rows, categories, reviewCount: rows.length });
+    res.render('review', { title: 'Review', rows, categories, reviewCount: rows.length, active: 'review' });
   });
 
   app.get('/', (req, res) => {
-    const { rows, accounts, categories, members } = feedQuery(db, req.user, req.query);
-    res.render('dashboard', {
+    const now = Math.floor(Date.now() / 1000);
+    const { rows, accounts, categories, members, period } = feedQuery(db, req.user, req.query, { now });
+    const view = {
       title: 'Overview',
-      rows, accounts, categories, members,
+      rows, accounts, categories, members, period,
+      groups: groupByDay(rows, now),
+      summary: periodSummary(db, req.user, req.query, now),
       banks: accounts.filter(a => a.kind === 'bank'),
       credits: accounts.filter(a => a.kind === 'credit'),
       totals: totals(db, req.user),
       filters: req.query,
       reviewCount: reviewCount(db, req.user),
       staleness: staleness(db, req.user),
-    });
+    };
+    // The client script refetches this same URL with partial=1 and swaps the
+    // fragment in; everything still works as a full page load without it.
+    if (req.query.partial === '1') return res.render('_overview', view);
+    res.render('dashboard', view);
   });
 
   function rulesFor(db, user) {
@@ -194,7 +223,7 @@ function registerRoutes(app, db) {
     }));
     const categories = db.prepare('SELECT * FROM categories ORDER BY name').all();
     res.render('rules', { title: 'Rules', rules, categories,
-      accounts: visAccts, aiOn: aiEnabled(db), reviewCount: reviewCount(db, req.user) });
+      accounts: visAccts, aiOn: aiEnabled(db), reviewCount: reviewCount(db, req.user), active: 'rules' });
   });
 
   app.post('/rules', (req, res) => {
@@ -315,7 +344,7 @@ function registerRoutes(app, db) {
 
   app.get('/accounts', ownerOnly, (req, res) => {
     const accounts = db.prepare('SELECT * FROM accounts ORDER BY kind, COALESCE(display_name, name)').all();
-    res.render('accounts', { title: 'Accounts', accounts, reviewCount: reviewCount(db, req.user) });
+    res.render('accounts', { title: 'Accounts', accounts, reviewCount: reviewCount(db, req.user), active: 'accounts' });
   });
 
   app.post('/accounts/:id', ownerOnly, (req, res) => {

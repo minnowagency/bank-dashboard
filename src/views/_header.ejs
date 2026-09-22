@@ -4,9 +4,10 @@
 <body>
 <nav class="nav">
   <a href="/" class="brand">Bank Dashboard</a>
-  <a href="/review">Review<% if (typeof reviewCount !== 'undefined' && reviewCount > 0) { %> (<%= reviewCount %>)<% } %></a>
-  <a href="/rules">Rules</a>
-  <% if (user.role === 'owner') { %><a href="/accounts">Accounts</a><% } %>
+  <a href="/" class="<%= typeof active !== 'undefined' && active === 'overview' ? 'active' : '' %>">Overview</a>
+  <a href="/review" class="<%= typeof active !== 'undefined' && active === 'review' ? 'active' : '' %>">Review<% if (typeof reviewCount !== 'undefined' && reviewCount > 0) { %><span class="badge"><%= reviewCount %></span><% } %></a>
+  <a href="/rules" class="<%= typeof active !== 'undefined' && active === 'rules' ? 'active' : '' %>">Rules</a>
+  <% if (user.role === 'owner') { %><a href="/accounts" class="<%= typeof active !== 'undefined' && active === 'accounts' ? 'active' : '' %>">Accounts</a><% } %>
   <form method="post" action="/logout" class="inline"><button class="linklike"><%= user.username %> · sign out</button></form>
 </nav>
 <main>
