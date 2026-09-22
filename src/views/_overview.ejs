@@ -137,10 +137,11 @@
               <form method="post" action="/senders" class="inline" title="Label the account that sent this wire; applies to every payment from it">
                 <input type="hidden" name="uid" value="<%= t.uid %>">
                 <input type="hidden" name="last4" value="<%= t.sender_last4 %>">
-                <span class="note">From account *<%= t.sender_last4 %>:</span>
+                <span class="note" style="white-space:nowrap">From account *<%= t.sender_last4 %>:</span>
                 <input name="name" value="<%= t.sender_name || '' %>" placeholder="who is this?" size="12" required>
                 <select name="category_id">
-                  <% categories.forEach(c => { %><option value="<%= c.id %>" <%= (c.name === 'Revenue' && !t.sender_name) ? 'selected' : '' %>><%= c.name === 'Revenue' ? 'Revenue (product sales)' : c.name %></option><% }) %>
+                  <% const want = t.sender_category_id || (categories.find(c => c.name === 'Revenue') || {}).id; %>
+                  <% categories.forEach(c => { %><option value="<%= c.id %>" <%= c.id === want ? 'selected' : '' %>><%= c.name === 'Revenue' ? 'Revenue (product sales)' : c.name %></option><% }) %>
                 </select>
                 <button class="primary"><%= t.sender_name ? 'Update sender' : 'Label sender' %></button>
               </form>

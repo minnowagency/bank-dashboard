@@ -47,8 +47,10 @@ function annotateSenders(db, rows) {
   const senders = senderMap(db);
   for (const r of rows) {
     const last4 = r.amount_cents > 0 ? senderLast4(r.description) : null;
+    const s = last4 && senders.get(last4);
     r.sender_last4 = last4;
-    r.sender_name = last4 && senders.has(last4) ? senders.get(last4).name : null;
+    r.sender_name = s ? s.name : null;
+    r.sender_category_id = s ? s.category_id : null;
   }
   return rows;
 }

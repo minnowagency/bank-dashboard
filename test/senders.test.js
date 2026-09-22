@@ -98,6 +98,12 @@ test('the rules page lists senders and the row detail offers the sender form on 
   const dash = await request(app).get('/?period=all').set('Cookie', owner);
   assert.match(dash.text, /name="last4" value="9711"/);  // unlabeled wire offers the form
   assert.match(dash.text, /name="note"/);                // note form is back in the row detail
+  // the labeled sender's own category is preselected, so "Update sender" can't silently relabel it
+  const revenueId = revenue;
+  const labeledForm = dash.text.split('name="last4" value="6212"')[1].split('</form>')[0];
+  assert.match(labeledForm, new RegExp(`<option value="${revenueId}" selected`));
+  const unlabeledForm = dash.text.split('name="last4" value="9711"')[1].split('</form>')[0];
+  assert.match(unlabeledForm, new RegExp(`<option value="${revenueId}" selected`));
 });
 
 test('sync applies sender labels before rules and AI', async () => {
