@@ -63,7 +63,26 @@ recurring items detected in its own history, without him writing rules.
   bank↔bank pairs and resets AI-filed inbound Transfers (manual categorizations
   untouched) so they are re-categorized under the new guidance.
 
+## Sender labels (added the same day)
+
+Truist wire/transfer descriptions carry no counterparty name, only the last four
+digits of the originating account (`DBT ACCT: XXXXXXXXX6212`, `FROM *9711`).
+`src/senders.js` extracts that with format-specific regexes (a phone number or
+invoice number can never match), and a `senders` table maps last4 → name +
+category. Labeling happens from the row detail on any inbound wire ("From
+account *6212: [name] [category] Label sender") and is listed/removed on the
+Rules page. `applySenders` runs in the sync pipeline after transfer detection and
+before rules and AI; it categorizes uncategorized **and AI-categorized** inbound
+rows (a person's label outranks the AI) and never touches manual rows. Relabeling
+moves previously labeled rows too. Rows show "· from hppyc" in the feed.
+
 ## Future
+
+- **Average-range income forecasting.** Customer wires vary in amount and date,
+  so per-occurrence detection rightly ignores them. Once a few months of labeled
+  sender data exist, forecast each sender as a monthly expected amount with a
+  range (average ± spread of the trailing N months), shown as a band rather than
+  a point. Requires sender labels to have been in place for the period.
 
 - A per-account **company** label, so that if a company ever has two accounts
   (checking + savings) transfers within that company pair again.
