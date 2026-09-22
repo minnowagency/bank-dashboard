@@ -1,5 +1,6 @@
 const { detectTransfers } = require('./transfers');
 const { applyRulesToUncategorized } = require('./rules');
+const { refreshCandidates } = require('./recurring');
 
 const OVERLAP_SECONDS = 7 * 86400;
 
@@ -73,6 +74,8 @@ async function runSync(db, { accessUrl, fetchAccountsFn, aiCategorizeFn = null, 
       try { ai = await aiCategorizeFn(db); }
       catch (err) { log(`[ai] step failed: ${String((err && err.message) || err)}`); }
     }
+    try { refreshCandidates(db, now()); }
+    catch (err) { log(`[recurring] refresh failed: ${String((err && err.message) || err)}`); }
     db.prepare('UPDATE sync_runs SET finished_at = ?, ok = 1 WHERE id = ?').run(now(), runId);
     return { ok: true, errors, newTransactions, transferPairs, ruleMatches, ai };
   } catch (err) {

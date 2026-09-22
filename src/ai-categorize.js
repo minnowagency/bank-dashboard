@@ -33,6 +33,7 @@ You receive a list of transactions. For each one, pick exactly one category from
 - Use "high" only when the merchant or description makes the category clear.
 - Use "medium" or "low" when you are guessing; those are reviewed by a person, so guessing quietly is worse than admitting doubt.
 - A positive amount is money coming in; a negative amount is money going out. An inbound amount is rarely an expense category.
+- Each account belongs to a different company. An inbound wire, ACH or "transfer" from another business is real income: use "Revenue" when it pays for products or services, "Distributions" for owner/member distributions. Use "Transfers" ONLY for a payment to the company's own credit card (e.g. "AMEX EPAYMENT", "PAYMENT THANK YOU").
 - "cardholder A/B/..." labels identify which employee card was used; the same cardholder's spending is often consistent.
 - Prefer the categories the company already used for similar transactions in the provided examples over your own intuition.
 - Never invent a category name. Use one from the list exactly as written.

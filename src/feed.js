@@ -220,4 +220,5 @@ function groupByDay(rows, now = Math.floor(Date.now() / 1000)) {
   return groups;
 }
 
-module.exports = { visibleAccounts, feedQuery, totals, resolvePeriod, periodSummary, groupByDay, TZ };
+module.exports = { visibleAccounts, feedQuery, totals, resolvePeriod, periodSummary, groupByDay,
+  partsIn, startOfDay, addMonths, TZ };

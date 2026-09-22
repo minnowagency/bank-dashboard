@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SEED_CATEGORIES = ['Payroll', 'Shipping', 'Supplies', 'Taxes', 'Fees',
-  'Transfers', 'Revenue', 'Utilities', 'Insurance', 'Other'];
+  'Transfers', 'Revenue', 'Distributions', 'Utilities', 'Insurance', 'Other'];
 
 // CREATE TABLE IF NOT EXISTS never alters a table that already exists, so
 // columns added after first deploy are backfilled here.
@@ -11,6 +11,31 @@ function migrate(db, schemaSql) {
   const cols = db.prepare('PRAGMA table_info(accounts)').all().map(c => c.name);
   if (!cols.includes('hidden')) db.exec('ALTER TABLE accounts ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
   rebuildTransactionsIfStale(db, schemaSql);
+  repairIntercompanyTransfers(db);
+}
+
+// Bank<->bank pairs made under the old rule were intercompany payments, and
+// the AI had filed inbound wires as Transfers. Undo both once so they get
+// categorized as income. Manual categorizations are left alone.
+function repairIntercompanyTransfers(db) {
+  const KEY = 'migration:intercompany-transfers';
+  if (db.prepare('SELECT 1 FROM settings WHERE key = ?').get(KEY)) return;
+  const hasKind = db.prepare('PRAGMA table_info(accounts)').all().some(c => c.name === 'kind');
+  const hasPairs = db.prepare('PRAGMA table_info(transactions)').all().some(c => c.name === 'transfer_pair_uid');
+  if (hasKind && hasPairs) {
+    db.transaction(() => {
+      db.exec(`UPDATE transactions SET category_id = NULL, category_source = NULL, transfer_pair_uid = NULL
+        WHERE category_source = 'transfer' AND uid IN (
+          SELECT a.uid FROM transactions a
+          JOIN transactions b ON b.uid = a.transfer_pair_uid
+          JOIN accounts aa ON aa.id = a.account_id JOIN accounts ab ON ab.id = b.account_id
+          WHERE aa.kind = ab.kind)`);
+      db.exec(`UPDATE transactions SET category_id = NULL, category_source = NULL, ai_confidence = NULL, ai_reason = NULL
+        WHERE category_source = 'ai' AND amount_cents > 0
+          AND category_id = (SELECT id FROM categories WHERE name = 'Transfers')`);
+      db.prepare("INSERT INTO settings (key, value) VALUES (?, '1')").run(KEY);
+    })();
+  }
 }
 
 // SQLite cannot alter a CHECK constraint, so widening category_source to allow
@@ -69,4 +94,4 @@ function openDb(dbPath) {
   return db;
 }
 
-module.exports = { openDb, SEED_CATEGORIES };
+module.exports = { openDb, SEED_CATEGORIES, repairIntercompanyTransfers };

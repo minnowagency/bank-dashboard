@@ -9,7 +9,13 @@ function detectTransfers(db) {
       ON b.amount_cents = -a.amount_cents
      AND b.account_id != a.account_id
      AND ABS(b.posted_at - a.posted_at) <= ?
+    JOIN accounts aa ON aa.id = a.account_id
+    JOIN accounts ab ON ab.id = b.account_id
     WHERE a.amount_cents < 0
+      -- Each bank account is a separate company, so bank<->bank movement is
+      -- income for the receiver, not an internal transfer. Only a bank
+      -- account paying a credit card is internal.
+      AND aa.kind != ab.kind
       AND a.category_id IS NULL AND b.category_id IS NULL
       AND a.transfer_pair_uid IS NULL AND b.transfer_pair_uid IS NULL
     ORDER BY gap ASC, a.posted_at ASC, a.uid ASC`).all(WINDOW_SECONDS);

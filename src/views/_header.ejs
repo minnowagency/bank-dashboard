@@ -6,6 +6,8 @@
   <a href="/" class="brand">Bank Dashboard</a>
   <a href="/" class="<%= typeof active !== 'undefined' && active === 'overview' ? 'active' : '' %>">Overview</a>
   <a href="/review" class="<%= typeof active !== 'undefined' && active === 'review' ? 'active' : '' %>">Review<% if (typeof reviewCount !== 'undefined' && reviewCount > 0) { %><span class="badge"><%= reviewCount %></span><% } %></a>
+  <a href="/forecast" class="<%= typeof active !== 'undefined' && active === 'forecast' ? 'active' : '' %>">Forecast</a>
+  <a href="/recurring" class="<%= typeof active !== 'undefined' && active === 'recurring' ? 'active' : '' %>">Recurring</a>
   <a href="/rules" class="<%= typeof active !== 'undefined' && active === 'rules' ? 'active' : '' %>">Rules</a>
   <% if (user.role === 'owner') { %><a href="/accounts" class="<%= typeof active !== 'undefined' && active === 'accounts' ? 'active' : '' %>">Accounts</a><% } %>
   <form method="post" action="/logout" class="inline"><button class="linklike"><%= user.username %> · sign out</button></form>

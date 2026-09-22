@@ -1,0 +1,73 @@
+<%- include('_header', { title, reviewCount, active }) %>
+<h1>Recurring</h1>
+<p class="note">Found automatically from your history. Confirm what's real and dismiss the rest — only confirmed items go into the Forecast. Annual bills won't be detected from 90 days of history; add those below.</p>
+
+<% const money = (r) => r.amount_min_cents === r.amount_max_cents ? fmtUSD(r.amount_cents)
+     : `${fmtUSD(r.amount_cents)} <span class="note">(${fmtUSD(r.amount_min_cents)}–${fmtUSD(r.amount_max_cents)})</span>`; %>
+
+<h2>Looks recurring — confirm? (<%= candidates.length %>)</h2>
+<% if (candidates.length === 0) { %><div class="feed"><div class="empty">No new candidates. New ones appear after each sync.</div></div><% } %>
+<% candidates.forEach(r => { %>
+  <div class="feed" style="margin-bottom:10px">
+    <div class="row" style="grid-template-columns:1fr auto">
+      <div>
+        <div class="desc"><%= r.display_name %> <span class="note">· <%= r.account_name %> · <%= r.cadence %> · <%= r.kind %></span></div>
+        <div class="sub">Seen <%= r.evidence.length %>×:
+          <% r.evidence.forEach((e, i) => { %><%= fmtDate(e.date) %> <%= fmtUSD(e.amount_cents) %><%= i < r.evidence.length - 1 ? ' · ' : '' %><% }) %>
+          — next expected <%= r.next_due ? fmtDate(r.next_due) : '?' %></div>
+      </div>
+      <div class="amt"><%- money(r) %></div>
+    </div>
+    <div class="detail">
+      <form method="post" action="/recurring/<%= r.id %>/confirm" class="inline"><button class="primary">Confirm</button></form>
+      <form method="post" action="/recurring/<%= r.id %>/dismiss" class="inline"><button>Dismiss</button></form>
+    </div>
+  </div>
+<% }) %>
+
+<h2>Confirmed (<%= active_items.length %>)</h2>
+<% if (active_items.length === 0) { %><div class="feed"><div class="empty">Nothing confirmed yet.</div></div><% } else { %>
+<div class="tablewrap">
+<table>
+  <tr><th>Item</th><th>Account</th><th>Every</th><th class="num">Amount</th><th>Next</th><th></th></tr>
+  <% active_items.forEach(r => { %>
+    <form id="ri-<%= r.id %>" method="post" action="/recurring/<%= r.id %>/edit"></form>
+    <tr>
+      <td><input form="ri-<%= r.id %>" name="display_name" value="<%= r.display_name %>" size="18">
+          <span class="note"><%= r.kind === 'income' ? '↑ income' : '↓ expense' %><%= r.status === 'manual' ? ' · added by hand' : '' %></span></td>
+      <td class="note"><%= r.account_name %></td>
+      <td><select form="ri-<%= r.id %>" name="cadence">
+        <% cadences.forEach(c => { %><option value="<%= c %>" <%= r.cadence === c ? 'selected' : '' %>><%= c %></option><% }) %></select></td>
+      <td class="num"><input form="ri-<%= r.id %>" name="amount" value="<%= (r.amount_cents / 100).toFixed(2) %>" size="9" class="num"></td>
+      <td class="note"><%= r.next_due ? fmtDate(r.next_due) : '—' %></td>
+      <td><button form="ri-<%= r.id %>" class="primary">Save</button>
+          <form method="post" action="/recurring/<%= r.id %>/<%= r.status === 'manual' ? 'delete' : 'dismiss' %>" class="inline"><button><%= r.status === 'manual' ? 'Delete' : 'Stop tracking' %></button></form></td>
+    </tr>
+  <% }) %>
+</table>
+</div>
+<% } %>
+
+<h2>Add one by hand</h2>
+<form method="post" action="/recurring" class="filters">
+  <label>Name <input name="display_name" required placeholder="Liability insurance"></label>
+  <label>Account <select name="account_id"><% accounts.forEach(a => { %><option value="<%= a.id %>"><%= a.display_name || a.name %></option><% }) %></select></label>
+  <label>Type <select name="kind"><option value="expense">Expense</option><option value="income">Income</option></select></label>
+  <label>Every <select name="cadence"><% cadences.forEach(c => { %><option value="<%= c %>"><%= c %></option><% }) %></select></label>
+  <label>Amount $ <input name="amount" size="8" required></label>
+  <label>Next date <input type="date" name="next_due" required></label>
+  <button class="primary">Add</button>
+</form>
+
+<% if (dismissed.length > 0) { %>
+  <details style="margin-top:18px"><summary class="note">Dismissed (<%= dismissed.length %>)</summary>
+    <div class="tablewrap" style="margin-top:8px"><table>
+      <% dismissed.forEach(r => { %>
+        <tr><td><%= r.display_name %> <span class="note">· <%= r.account_name %> · <%= r.cadence %></span></td>
+            <td class="num"><%- money(r) %></td>
+            <td><form method="post" action="/recurring/<%= r.id %>/confirm" class="inline"><button>Confirm after all</button></form></td></tr>
+      <% }) %>
+    </table></div>
+  </details>
+<% } %>
+<%- include('_footer') %>

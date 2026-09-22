@@ -80,3 +80,22 @@ CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS recurring_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id TEXT NOT NULL REFERENCES accounts(id),
+  merchant_key TEXT NOT NULL,          -- normalized description the detector groups on
+  display_name TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('expense','income')),
+  cadence TEXT NOT NULL CHECK (cadence IN ('weekly','biweekly','semimonthly','monthly')),
+  amount_cents INTEGER NOT NULL,       -- typical amount, positive; sign comes from kind
+  amount_min_cents INTEGER NOT NULL,
+  amount_max_cents INTEGER NOT NULL,
+  last_seen INTEGER,                   -- posted_at of the latest matching transaction
+  next_due INTEGER,                    -- epoch of the next expected occurrence
+  status TEXT NOT NULL DEFAULT 'candidate' CHECK (status IN ('candidate','confirmed','dismissed','manual')),
+  evidence TEXT NOT NULL DEFAULT '[]', -- JSON [{date, amount_cents}] the detector matched
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE (account_id, merchant_key, kind)
+);

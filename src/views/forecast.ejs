@@ -1,0 +1,55 @@
+<%- include('_header', { title, reviewCount, active }) %>
+<h1>Forecast <span class="note">next <%= f.weeks %> weeks, from confirmed recurring items</span></h1>
+
+<div class="chips">
+  <a class="chip <%= !selected ? 'on' : '' %>" href="/forecast">All accounts</a>
+  <% accounts.forEach(a => { %>
+    <a class="chip <%= selected === a.id ? 'on' : '' %>" href="/forecast?account=<%= encodeURIComponent(a.id) %>"><%= a.display_name || a.name %></a>
+  <% }) %>
+</div>
+
+<% if (f.accounts.length === 0) { %>
+  <div class="feed"><div class="empty">No accounts to forecast.</div></div>
+<% } %>
+
+<% f.accounts.forEach(acct => {
+     const hasItems = acct.weeks.some(w => w.items.length) || acct.overdue.length;
+     const low = acct.kind === 'bank' && acct.weeks.some(w => w.balanceCents < 0); %>
+  <h2><%= acct.name %> <span class="note">· <%= acct.kind === 'credit' ? 'owed now ' + fmtUSD(-acct.balanceCents) : 'balance now ' + fmtUSD(acct.balanceCents) %></span></h2>
+
+  <% if (!hasItems) { %>
+    <div class="feed"><div class="empty">No confirmed recurring items for this account yet — confirm some on the <a href="/recurring">Recurring</a> page.</div></div>
+  <% } else { %>
+    <% if (acct.overdue.length) { %>
+      <div class="banner"><strong>Overdue:</strong>
+        <% acct.overdue.forEach(o => { %><div><%= o.name %> — expected <%= fmtDate(o.expected) %>, not seen (<%= fmtUSD(o.cents) %> <%= o.kind %>)</div><% }) %>
+      </div>
+    <% } %>
+    <% if (low) { %><div class="banner"><strong>Heads up:</strong> the projected balance goes below zero within this window.</div><% } %>
+
+    <div class="tablewrap">
+    <table>
+      <tr><th>Week</th><th>Expected</th><th class="num">In</th><th class="num">Out</th><th class="num">Net</th><th class="num"><%= acct.kind === 'credit' ? 'Owed' : 'Balance' %></th></tr>
+      <% acct.weeks.forEach(w => { %>
+        <tr>
+          <td class="note" style="white-space:nowrap"><%= w.label %></td>
+          <td>
+            <% if (w.items.length === 0) { %><span class="note">—</span><% } %>
+            <% w.items.forEach(i => { %>
+              <div><span class="<%= i.kind === 'income' ? 'pos' : '' %>"><%= i.kind === 'income' ? '+' : '−' %><%= fmtUSD(i.cents) %></span>
+                <%= i.name %> <span class="note"><%= fmtDate(i.date) %><%= i.late ? ' · late' : '' %></span></div>
+            <% }) %>
+          </td>
+          <td class="num pos"><%= w.inCents ? fmtUSD(w.inCents) : '' %></td>
+          <td class="num"><%= w.outCents ? fmtUSD(w.outCents) : '' %></td>
+          <td class="num <%= w.netCents > 0 ? 'pos' : '' %>"><%= fmtUSD(w.netCents) %></td>
+          <td class="num <%= acct.kind === 'bank' && w.balanceCents < 0 ? 'owed' : '' %>">
+            <%= acct.kind === 'credit' ? fmtUSD(-w.balanceCents) : fmtUSD(w.balanceCents) %></td>
+        </tr>
+      <% }) %>
+    </table>
+    </div>
+  <% } %>
+<% }) %>
+<p class="note" style="margin-top:14px">Balances assume nothing besides confirmed recurring items. One-off income and spending will move the real number.</p>
+<%- include('_footer') %>

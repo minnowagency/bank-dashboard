@@ -56,6 +56,7 @@ function createApp(db, { cookieSecure = false } = {}) {
 }
 
 const { feedQuery, totals, visibleAccounts, periodSummary, groupByDay } = require('./feed');
+const { forecast } = require('./recurring');
 
 function reviewCount(db, user) {
   const ids = visibleAccounts(db, user).map(a => a.id);
@@ -357,6 +358,91 @@ function registerRoutes(app, db) {
     db.prepare('UPDATE accounts SET display_name = ?, visibility = ?, kind = ?, hidden = ? WHERE id = ?')
       .run(dn, vis, kind, hidden, req.params.id);
     res.redirect('/accounts');
+  });
+
+  // ---- Recurring items and the forecast --------------------------------
+  const CADENCES = ['weekly', 'biweekly', 'semimonthly', 'monthly'];
+  function visibleItem(db, user, id) {
+    const r = db.prepare('SELECT * FROM recurring_items WHERE id = ?').get(Number(id));
+    if (!r) return null;
+    return visibleAccounts(db, user).some(a => a.id === r.account_id) ? r : null;
+  }
+  function parseAmount(raw) {
+    try { const c = toCents(String(raw)); return Number.isFinite(c) && c > 0 ? c : null; } catch { return null; }
+  }
+
+  app.get('/recurring', (req, res) => {
+    const accounts = visibleAccounts(db, req.user);
+    const ids = accounts.map(a => a.id);
+    const rows = ids.length === 0 ? [] : db.prepare(`
+      SELECT r.*, COALESCE(a.display_name, a.name) AS account_name
+      FROM recurring_items r JOIN accounts a ON a.id = r.account_id
+      WHERE r.account_id IN (${ids.map(() => '?').join(',')})
+      ORDER BY r.kind, r.next_due`).all(...ids)
+      .map(r => ({ ...r, evidence: JSON.parse(r.evidence || '[]') }));
+    res.render('recurring', {
+      title: 'Recurring', active: 'recurring', accounts, cadences: CADENCES,
+      candidates: rows.filter(r => r.status === 'candidate'),
+      active_items: rows.filter(r => r.status === 'confirmed' || r.status === 'manual'),
+      dismissed: rows.filter(r => r.status === 'dismissed'),
+      reviewCount: reviewCount(db, req.user),
+    });
+  });
+
+  app.post('/recurring', (req, res) => {
+    const accountId = String(req.body.account_id || '');
+    if (!visibleAccounts(db, req.user).some(a => a.id === accountId)) return res.status(404).send('Not found');
+    const name = String(req.body.display_name || '').trim();
+    const kind = req.body.kind === 'income' ? 'income' : 'expense';
+    const cadence = CADENCES.includes(req.body.cadence) ? req.body.cadence : null;
+    const cents = parseAmount(req.body.amount);
+    let nextDue = null;
+    try { nextDue = require('./money').toEpochDay(String(req.body.next_due || '')) + 12 * 3600; } catch { nextDue = null; }
+    if (!name || !cadence || !cents || !nextDue) return res.status(400).send('Name, cadence, amount and next date are required');
+    const now = Math.floor(Date.now() / 1000);
+    db.prepare(`INSERT INTO recurring_items (account_id, merchant_key, display_name, kind, cadence, amount_cents,
+      amount_min_cents, amount_max_cents, last_seen, next_due, status, evidence, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'manual', '[]', ?, ?)`)
+      .run(accountId, `MANUAL:${name.toUpperCase()}:${now}`, name, kind, cadence, cents, cents, cents, nextDue, now, now);
+    res.redirect('/recurring');
+  });
+
+  for (const [action, status] of [['confirm', 'confirmed'], ['dismiss', 'dismissed']]) {
+    app.post(`/recurring/:id/${action}`, (req, res) => {
+      const r = visibleItem(db, req.user, req.params.id);
+      if (!r) return res.status(404).send('Not found');
+      db.prepare('UPDATE recurring_items SET status = ?, updated_at = ? WHERE id = ?')
+        .run(status, Math.floor(Date.now() / 1000), r.id);
+      res.redirect('/recurring');
+    });
+  }
+
+  app.post('/recurring/:id/edit', (req, res) => {
+    const r = visibleItem(db, req.user, req.params.id);
+    if (!r) return res.status(404).send('Not found');
+    const name = String(req.body.display_name || '').trim() || r.display_name;
+    const cadence = CADENCES.includes(req.body.cadence) ? req.body.cadence : r.cadence;
+    const cents = parseAmount(req.body.amount);
+    if (!cents) return res.status(400).send('Bad amount');
+    db.prepare(`UPDATE recurring_items SET display_name = ?, cadence = ?, amount_cents = ?, updated_at = ? WHERE id = ?`)
+      .run(name, cadence, cents, Math.floor(Date.now() / 1000), r.id);
+    res.redirect('/recurring');
+  });
+
+  app.post('/recurring/:id/delete', (req, res) => {
+    const r = visibleItem(db, req.user, req.params.id);
+    if (!r) return res.status(404).send('Not found');
+    db.prepare('DELETE FROM recurring_items WHERE id = ?').run(r.id);
+    res.redirect('/recurring');
+  });
+
+  app.get('/forecast', (req, res) => {
+    const accountId = String(req.query.account || '') || null;
+    const f = forecast(db, req.user, { accountId, weeks: 8 });
+    res.render('forecast', {
+      title: 'Forecast', active: 'forecast', f, accounts: visibleAccounts(db, req.user),
+      selected: accountId, reviewCount: reviewCount(db, req.user),
+    });
   });
 
   app.get('/export.csv', (req, res) => {

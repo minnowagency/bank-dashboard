@@ -7,7 +7,8 @@ const DAY = 86400;
 const T0 = 1789000000;
 
 function seed(db) {
-  db.prepare("INSERT INTO accounts (id, name) VALUES ('CHK','Checking'),('SAV','Savings'),('AMX','Amex')").run();
+  db.prepare(`INSERT INTO accounts (id, name, kind) VALUES
+    ('CHK','Checking','bank'), ('SAV','Savings','bank'), ('AMX','Amex','credit'), ('AMX2','Amex Gold','credit')`).run();
 }
 let seq = 0;
 function txn(db, accountId, amountCents, postedAt, extra = {}) {
@@ -23,7 +24,7 @@ test('pairs opposite-sign equal amounts across accounts within 3 days', () => {
   const db = openDb(':memory:');
   seed(db);
   const out = txn(db, 'CHK', -50000, T0);
-  const inn = txn(db, 'SAV', 50000, T0 + DAY);
+  const inn = txn(db, 'AMX', 50000, T0 + DAY);
   assert.equal(detectTransfers(db), 1);
   const a = db.prepare('SELECT * FROM transactions WHERE uid=?').get(out);
   const b = db.prepare('SELECT * FROM transactions WHERE uid=?').get(inn);
@@ -38,11 +39,11 @@ test('does not pair outside the window, same account, or already-categorized row
   const db = openDb(':memory:');
   seed(db);
   txn(db, 'CHK', -10000, T0);
-  txn(db, 'SAV', 10000, T0 + 4 * DAY);              // too far apart
+  txn(db, 'AMX', 10000, T0 + 4 * DAY);              // too far apart
   txn(db, 'CHK', -20000, T0);
   txn(db, 'CHK', 20000, T0);                        // same account
   txn(db, 'CHK', -30000, T0);
-  txn(db, 'SAV', 30000, T0, { categoryId: 1 });     // already categorized
+  txn(db, 'AMX', 30000, T0, { categoryId: 1 });     // already categorized
   assert.equal(detectTransfers(db), 0);
 });
 
@@ -50,7 +51,7 @@ test('ambiguous candidates pair closest-dated first, each side used once', () =>
   const db = openDb(':memory:');
   seed(db);
   const out1 = txn(db, 'CHK', -75000, T0);
-  const inFar = txn(db, 'AMX', 75000, T0 + 2 * DAY);
+  const inFar = txn(db, 'AMX2', 75000, T0 + 2 * DAY);
   const inNear = txn(db, 'AMX', 75000, T0);
   assert.equal(detectTransfers(db), 1);
   assert.equal(db.prepare('SELECT transfer_pair_uid FROM transactions WHERE uid=?').get(out1).transfer_pair_uid, inNear);
@@ -61,7 +62,16 @@ test('idempotent: second run finds nothing new', () => {
   const db = openDb(':memory:');
   seed(db);
   txn(db, 'CHK', -50000, T0);
-  txn(db, 'SAV', 50000, T0);
+  txn(db, 'AMX', 50000, T0);
   assert.equal(detectTransfers(db), 1);
   assert.equal(detectTransfers(db), 0);
+});
+
+test('bank-to-bank movement is intercompany income, never paired as a transfer', () => {
+  const db = openDb(':memory:');
+  seed(db);
+  txn(db, 'CHK', -2500000, T0, { description: 'WIRE OUT TO BHCC' });
+  txn(db, 'SAV', 2500000, T0, { description: 'WIRE IN FROM SMFG' });
+  assert.equal(detectTransfers(db), 0);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM transactions WHERE category_id IS NOT NULL').get().n, 0);
 });

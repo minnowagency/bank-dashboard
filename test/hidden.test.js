@@ -98,3 +98,34 @@ test('owner editing a rule whose account is hidden keeps the account condition',
   assert.equal(r.pattern, 'UPS FREIGHT');
   assert.equal(r.account_id, 'CHK');
 });
+
+test('one-time repair unpairs bank-to-bank transfers and resets AI-filed inbound Transfers', () => {
+  const { makeApp } = require('./helpers');
+  const { db } = makeApp();
+  const transfers = db.prepare("SELECT id FROM categories WHERE name='Transfers'").get().id;
+  const other = db.prepare("SELECT id FROM categories WHERE name='Other'").get().id;
+  db.prepare("INSERT INTO accounts (id, name, kind, visibility) VALUES ('SAV', 'Other Co', 'bank', 'company')").run();
+  const ins = db.prepare(`INSERT INTO transactions (uid, sf_id, account_id, posted_at, amount_cents, description,
+    category_id, category_source, transfer_pair_uid, first_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`);
+  ins.run('CHK|a', 'a', 'CHK', T0, -100000, 'WIRE OUT', transfers, 'transfer', 'SAV|b');   // bank<->bank: undo
+  ins.run('SAV|b', 'b', 'SAV', T0, 100000, 'WIRE IN', transfers, 'transfer', 'CHK|a');
+  ins.run('CHK|c', 'c', 'CHK', T0, -50000, 'AMEX EPAYMENT', transfers, 'transfer', 'AMX|d'); // bank<->credit: keep
+  ins.run('AMX|d', 'd', 'AMX', T0, 50000, 'PAYMENT THANK YOU', transfers, 'transfer', 'CHK|c');
+  ins.run('CHK|e', 'e', 'CHK', T0, 2500000, 'WIRE REF 1 HPPYC', transfers, 'ai', null);        // ai inbound: reset
+  ins.run('CHK|f', 'f', 'CHK', T0, 2500000, 'WIRE REF 2 HPPYC', transfers, 'manual', null);    // manual: keep
+  ins.run('CHK|g', 'g', 'CHK', T0, -700, 'FEE', other, 'ai', null);                            // unrelated: keep
+  db.prepare("DELETE FROM settings WHERE key = 'migration:intercompany-transfers'").run();
+
+  const { repairIntercompanyTransfers } = require('../src/db');
+  repairIntercompanyTransfers(db);
+  // spread: node:sqlite rows have a null prototype, which strict deepEqual rejects
+  const get = (uid) => ({ ...db.prepare('SELECT category_id, category_source, transfer_pair_uid FROM transactions WHERE uid=?').get(uid) });
+  assert.deepEqual(get('CHK|a'), { category_id: null, category_source: null, transfer_pair_uid: null });
+  assert.deepEqual(get('SAV|b'), { category_id: null, category_source: null, transfer_pair_uid: null });
+  assert.equal(get('CHK|c').transfer_pair_uid, 'AMX|d');
+  assert.equal(get('CHK|e').category_id, null);
+  assert.equal(get('CHK|f').category_id, transfers);
+  assert.equal(get('CHK|g').category_id, other);
+  repairIntercompanyTransfers(db); // second call is a no-op
+  assert.equal(get('CHK|c').transfer_pair_uid, 'AMX|d');
+});
