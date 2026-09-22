@@ -141,7 +141,7 @@
                 <input name="name" value="<%= t.sender_name || '' %>" placeholder="who is this?" size="12" required>
                 <select name="category_id">
                   <% const want = t.sender_category_id || (categories.find(c => c.name === 'Revenue') || {}).id; %>
-                  <% categories.forEach(c => { %><option value="<%= c.id %>" <%= c.id === want ? 'selected' : '' %>><%= c.name === 'Revenue' ? 'Revenue (product sales)' : c.name %></option><% }) %>
+                  <% senderCategoryOptions(categories).forEach(c => { %><option value="<%= c.id %>" <%= c.id === want ? 'selected' : '' %>><%= c.label %></option><% }) %>
                 </select>
                 <button class="primary"><%= t.sender_labeled ? 'Update sender' : 'Label sender' %></button>
               </form>

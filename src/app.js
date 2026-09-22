@@ -15,6 +15,7 @@ function createApp(db, { cookieSecure = false } = {}) {
   app.use(cookieParser());
   app.use('/static', express.static(path.join(__dirname, '..', 'public')));
   app.locals.fmtUSD = require('./money').fmtUSD;
+  app.locals.senderCategoryOptions = senderCategoryOptions;
   app.locals.fmtDate = (epoch) => new Date(epoch * 1000).toISOString().slice(0, 10);
 
   app.get('/health', (req, res) => res.json({ ok: true }));
@@ -57,7 +58,7 @@ function createApp(db, { cookieSecure = false } = {}) {
 
 const { feedQuery, totals, visibleAccounts, periodSummary, groupByDay } = require('./feed');
 const { forecast } = require('./recurring');
-const { applySenders, annotateSenders, unlabeledSenders } = require('./senders');
+const { applySenders, annotateSenders, unlabeledSenders, senderCategoryOptions } = require('./senders');
 
 function reviewCount(db, user) {
   const ids = visibleAccounts(db, user).map(a => a.id);

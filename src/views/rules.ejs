@@ -53,7 +53,7 @@
         <td class="num pos"><%= fmtUSD(u.totalCents) %></td>
         <td><input form="<%= fid %>" name="name" value="<%= u.known_name || '' %>" placeholder="e.g. hppyc" size="12" required></td>
         <td><select form="<%= fid %>" name="category_id">
-          <% categories.forEach(c => { %><option value="<%= c.id %>" <%= c.name === 'Revenue' ? 'selected' : '' %>><%= c.name === 'Revenue' ? 'Revenue (product sales)' : c.name %></option><% }) %>
+          <% senderCategoryOptions(categories).forEach(c => { %><option value="<%= c.id %>" <%= c.name === 'Revenue' ? 'selected' : '' %>><%= c.label %></option><% }) %>
         </select></td>
         <td><button form="<%= fid %>" class="primary">Label</button></td>
       </tr>

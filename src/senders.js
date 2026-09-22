@@ -86,4 +86,12 @@ function unlabeledSenders(db, accountIds) {
   return [...agg.values()].sort((x, y) => y.count - x.count);
 }
 
-module.exports = { senderLast4, applySenders, annotateSenders, unlabeledSenders };
+// Order for the sender label dropdown: what an inbound wire usually is, first.
+const INBOUND_FIRST = ['Revenue', 'Distributions', 'Capital contributions'];
+function senderCategoryOptions(categories) {
+  const rank = (c) => { const i = INBOUND_FIRST.indexOf(c.name); return i === -1 ? INBOUND_FIRST.length : i; };
+  return [...categories].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name))
+    .map(c => ({ ...c, label: c.name === 'Revenue' ? 'Revenue (product sales)' : c.name }));
+}
+
+module.exports = { senderLast4, applySenders, annotateSenders, unlabeledSenders, senderCategoryOptions };

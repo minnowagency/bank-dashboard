@@ -110,6 +110,10 @@ test('the rules page lists senders and the row detail offers the sender form on 
   assert.ok(!/id="us-6212-CHK"/.test(rules.text), 'labeled pairs are not offered again');
   assert.match(rules.text, /id="us-6212-PER"/, 'the same sender into another company still needs a label');
   assert.match(rules.text, /name="name" value="hppyc"/, 'the known name is prefilled for the new pair');
+  // the label dropdown lists the inbound meanings first, including capital contributions
+  const form = rules.text.split('id="us-9711-CHK"')[1];
+  const firstThree = [...form.matchAll(/<option value="\d+"[^>]*>([^<]+)<\/option>/g)].slice(0, 3).map(m => m[1]);
+  assert.deepEqual(firstThree, ['Revenue (product sales)', 'Distributions', 'Capital contributions']);
   const dash = await request(app).get('/?period=all').set('Cookie', owner);
   assert.match(dash.text, /name="last4" value="9711"/);  // unlabeled wire offers the form
   assert.match(dash.text, /name="note"/);                // note form is back in the row detail

@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SEED_CATEGORIES = ['Payroll', 'Shipping', 'Supplies', 'Taxes', 'Fees',
-  'Transfers', 'Revenue', 'Distributions', 'Utilities', 'Insurance', 'Other'];
+  'Transfers', 'Revenue', 'Distributions', 'Capital contributions', 'Utilities', 'Insurance', 'Other'];
 
 // CREATE TABLE IF NOT EXISTS never alters a table that already exists, so
 // columns added after first deploy are backfilled here.

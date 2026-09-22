@@ -56,9 +56,10 @@ recurring items detected in its own history, without him writing rules.
 
 - `detectTransfers` pairs only when one side is a bank account and the other a
   credit card.
-- New seed category **Distributions**; the AI prompt says inbound wires/ACH from
-  other businesses are Revenue or Distributions, and Transfers is reserved for
-  the company's own card payments.
+- New seed categories **Distributions** and **Capital contributions**; the AI
+  prompt says inbound wires/ACH from other businesses are Revenue, Distributions
+  or Capital contributions, and Transfers is reserved for the company's own card
+  payments. Sender-label dropdowns list those three inbound meanings first.
 - One-time guarded migration `migration:intercompany-transfers`: unpairs
   bank↔bank pairs and resets AI-filed inbound Transfers (manual categorizations
   untouched) so they are re-categorized under the new guidance.
