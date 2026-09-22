@@ -140,7 +140,8 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 
 details.rowdetail > summary { cursor: pointer; list-style: none; }
 details.rowdetail > summary::-webkit-details-marker { display: none; }
-details.rowdetail[open] > summary .desc::after { content: ' ▾'; color: var(--dim); }
+details.rowdetail > summary .desc::after { content: ' ▸'; color: var(--dim); font-size: 11px; }
+details.rowdetail[open] > summary .desc::after { content: ' ▾'; }
 .detail form.inline { display: inline-flex; gap: 6px; align-items: center; }
 
 /* Tables (rules, accounts, review) */

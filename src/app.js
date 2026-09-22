@@ -57,7 +57,7 @@ function createApp(db, { cookieSecure = false } = {}) {
 
 const { feedQuery, totals, visibleAccounts, periodSummary, groupByDay } = require('./feed');
 const { forecast } = require('./recurring');
-const { applySenders, annotateSenders } = require('./senders');
+const { applySenders, annotateSenders, unlabeledSenders } = require('./senders');
 
 function reviewCount(db, user) {
   const ids = visibleAccounts(db, user).map(a => a.id);
@@ -227,7 +227,7 @@ function registerRoutes(app, db) {
     const categories = db.prepare('SELECT * FROM categories ORDER BY name').all();
     const senders = db.prepare(`SELECT s.*, c.name AS category_name FROM senders s
       JOIN categories c ON c.id = s.category_id ORDER BY s.name`).all();
-    res.render('rules', { title: 'Rules', rules, categories, senders,
+    res.render('rules', { title: 'Rules', rules, categories, senders, unlabeled: unlabeledSenders(db, ids),
       accounts: visAccts, aiOn: aiEnabled(db), reviewCount: reviewCount(db, req.user), active: 'rules' });
   });
 

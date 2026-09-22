@@ -38,6 +38,27 @@
 </div>
 
 <h2>Senders <span class="note">— who each wire-originating account belongs to</span></h2>
+<% if (unlabeled.length > 0) { %>
+  <p class="note">Wires only identify the sending account's last four digits. Name each account once and every payment from it — past and future — is filed the same way.</p>
+  <div class="tablewrap" style="margin-bottom:12px">
+  <table>
+    <tr><th>Sending account</th><th>Wires</th><th class="num">Total received</th><th>Who is this?</th><th>File as</th><th></th></tr>
+    <% unlabeled.forEach(u => { %>
+      <form id="us-<%= u.last4 %>" method="post" action="/senders"><input type="hidden" name="last4" value="<%= u.last4 %>"></form>
+      <tr>
+        <td><strong>*<%= u.last4 %></strong></td>
+        <td class="note"><%= u.count %> · last <%= fmtDate(u.latest) %></td>
+        <td class="num pos"><%= fmtUSD(u.totalCents) %></td>
+        <td><input form="us-<%= u.last4 %>" name="name" placeholder="e.g. hppyc" size="14" required></td>
+        <td><select form="us-<%= u.last4 %>" name="category_id">
+          <% categories.forEach(c => { %><option value="<%= c.id %>" <%= c.name === 'Revenue' ? 'selected' : '' %>><%= c.name === 'Revenue' ? 'Revenue (product sales)' : c.name %></option><% }) %>
+        </select></td>
+        <td><button form="us-<%= u.last4 %>" class="primary">Label</button></td>
+      </tr>
+    <% }) %>
+  </table>
+  </div>
+<% } %>
 <% if (senders.length === 0) { %>
   <div class="feed"><div class="empty">None yet. Open an inbound wire on the Overview and use "Label sender".</div></div>
 <% } else { %>

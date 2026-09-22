@@ -95,6 +95,10 @@ test('the rules page lists senders and the row detail offers the sender form on 
   const rules = await request(app).get('/rules').set('Cookie', owner);
   assert.match(rules.text, /\*6212/);
   assert.match(rules.text, /hppyc/);
+  // the unlabeled sending account gets an inline label form on the Rules page
+  assert.match(rules.text, /<strong>\*9711<\/strong>/);
+  assert.match(rules.text, /id="us-9711"/);
+  assert.ok(!/id="us-6212"/.test(rules.text), 'labeled senders are not offered again');
   const dash = await request(app).get('/?period=all').set('Cookie', owner);
   assert.match(dash.text, /name="last4" value="9711"/);  // unlabeled wire offers the form
   assert.match(dash.text, /name="note"/);                // note form is back in the row detail

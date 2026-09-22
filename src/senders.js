@@ -55,4 +55,22 @@ function annotateSenders(db, rows) {
   return rows;
 }
 
-module.exports = { senderLast4, applySenders, annotateSenders };
+// Sending accounts seen in this user's inbound wires that have no label yet,
+// with how many wires and how much money came from each.
+function unlabeledSenders(db, accountIds) {
+  if (accountIds.length === 0) return [];
+  const senders = senderMap(db);
+  const rows = db.prepare(`SELECT description, amount_cents, posted_at FROM transactions
+    WHERE amount_cents > 0 AND account_id IN (${accountIds.map(() => '?').join(',')})`).all(...accountIds);
+  const agg = new Map();
+  for (const r of rows) {
+    const last4 = senderLast4(r.description);
+    if (!last4 || senders.has(last4)) continue;
+    const a = agg.get(last4) || { last4, count: 0, totalCents: 0, latest: 0 };
+    a.count++; a.totalCents += r.amount_cents; a.latest = Math.max(a.latest, r.posted_at);
+    agg.set(last4, a);
+  }
+  return [...agg.values()].sort((x, y) => y.count - x.count);
+}
+
+module.exports = { senderLast4, applySenders, annotateSenders, unlabeledSenders };
