@@ -12,6 +12,31 @@ function migrate(db, schemaSql) {
   if (!cols.includes('hidden')) db.exec('ALTER TABLE accounts ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
   rebuildTransactionsIfStale(db, schemaSql);
   repairIntercompanyTransfers(db);
+  rebuildSendersIfStale(db, schemaSql);
+}
+
+// The first senders table was keyed by sending account only; labels now
+// belong to a (sending account, receiving company) pair. Old labels are
+// expanded to every receiving account that has wires from that sender, which
+// reproduces the old behavior exactly until someone refines them.
+function rebuildSendersIfStale(db, schemaSql) {
+  const cols = db.prepare('PRAGMA table_info(senders)').all().map(c => c.name);
+  if (cols.length === 0 || cols.includes('account_id')) return;
+  db.transaction(() => {
+    db.exec('ALTER TABLE senders RENAME TO senders_legacy');
+    db.exec(schemaSql);
+    const old = db.prepare('SELECT * FROM senders_legacy').all();
+    const ins = db.prepare(`INSERT OR IGNORE INTO senders (last4, account_id, name, category_id, created_by, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)`);
+    const receivers = db.prepare(`SELECT DISTINCT account_id FROM transactions WHERE amount_cents > 0
+      AND (description LIKE ? OR description LIKE ?)`);
+    for (const s of old) {
+      for (const r of receivers.all(`%ACCT: %${s.last4}%`, `%FROM *${s.last4}%`)) {
+        ins.run(s.last4, r.account_id, s.name, s.category_id, s.created_by, s.created_at);
+      }
+    }
+    db.exec('DROP TABLE senders_legacy');
+  })();
 }
 
 // Bank<->bank pairs made under the old rule were intercompany payments, and

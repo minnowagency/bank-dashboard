@@ -225,8 +225,10 @@ function registerRoutes(app, db) {
         : null,
     }));
     const categories = db.prepare('SELECT * FROM categories ORDER BY name').all();
-    const senders = db.prepare(`SELECT s.*, c.name AS category_name FROM senders s
-      JOIN categories c ON c.id = s.category_id ORDER BY s.name`).all();
+    const senders = ids.length === 0 ? [] : db.prepare(`SELECT s.*, c.name AS category_name,
+        COALESCE(a.display_name, a.name) AS account_name
+      FROM senders s JOIN categories c ON c.id = s.category_id JOIN accounts a ON a.id = s.account_id
+      WHERE s.account_id IN (${ids.map(() => '?').join(',')}) ORDER BY s.name, account_name`).all(...ids);
     res.render('rules', { title: 'Rules', rules, categories, senders, unlabeled: unlabeledSenders(db, ids),
       accounts: visAccts, aiOn: aiEnabled(db), reviewCount: reviewCount(db, req.user), active: 'rules' });
   });
@@ -367,25 +369,28 @@ function registerRoutes(app, db) {
   // ---- Sender labels ----------------------------------------------------
   app.post('/senders', (req, res) => {
     const last4 = String(req.body.last4 || '').trim();
+    const accountId = String(req.body.account_id || '').trim();
     const name = String(req.body.name || '').trim();
     const cid = Number(req.body.category_id);
     if (!/^\d{4}$/.test(last4) || !name) return res.status(400).send('Sender account digits and a name are required');
     if (!validateCategoryId(db, cid)) return res.status(400).send('Unknown category');
-    // when labeling from a row, the row must be one this user can see
-    if (req.body.uid && !visibleTxn(db, req.user, String(req.body.uid))) return res.status(404).send('Not found');
-    db.prepare(`INSERT INTO senders (last4, name, category_id, created_by, created_at) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(last4) DO UPDATE SET name = excluded.name, category_id = excluded.category_id`)
-      .run(last4, name, cid, req.user.id, Math.floor(Date.now() / 1000));
-    // a relabel must move rows this sender already categorized, too
+    // the receiving account must be one this user can see
+    if (!visibleAccounts(db, req.user).some(a => a.id === accountId)) return res.status(404).send('Not found');
+    db.prepare(`INSERT INTO senders (last4, account_id, name, category_id, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(last4, account_id) DO UPDATE SET name = excluded.name, category_id = excluded.category_id`)
+      .run(last4, accountId, name, cid, req.user.id, Math.floor(Date.now() / 1000));
+    // a relabel must move rows this pair already categorized, too
     db.prepare(`UPDATE transactions SET category_id = NULL, category_source = NULL
-      WHERE category_source = 'rule' AND rule_id IS NULL AND amount_cents > 0 AND category_id != ?
-        AND (description LIKE ? OR description LIKE ?)`).run(cid, `%ACCT: %${last4}%`, `%FROM *${last4}%`);
+      WHERE category_source = 'rule' AND rule_id IS NULL AND amount_cents > 0 AND account_id = ? AND category_id != ?
+        AND (description LIKE ? OR description LIKE ?)`).run(accountId, cid, `%ACCT: %${last4}%`, `%FROM *${last4}%`);
     applySenders(db);
     back(req, res);
   });
 
-  app.post('/senders/:last4/delete', (req, res) => {
-    db.prepare('DELETE FROM senders WHERE last4 = ?').run(String(req.params.last4));
+  app.post('/senders/:last4/:account/delete', (req, res) => {
+    const accountId = String(req.params.account);
+    if (!visibleAccounts(db, req.user).some(a => a.id === accountId)) return res.status(404).send('Not found');
+    db.prepare('DELETE FROM senders WHERE last4 = ? AND account_id = ?').run(String(req.params.last4), accountId);
     res.redirect('/rules');
   });
 

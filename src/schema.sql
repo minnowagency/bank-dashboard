@@ -101,9 +101,11 @@ CREATE TABLE IF NOT EXISTS recurring_items (
 );
 
 CREATE TABLE IF NOT EXISTS senders (
-  last4 TEXT PRIMARY KEY,              -- last four digits of the originating account
-  name TEXT NOT NULL,                  -- who that account belongs to ("hppyc")
-  category_id INTEGER NOT NULL REFERENCES categories(id),
+  last4 TEXT NOT NULL,                 -- last four digits of the originating account
+  account_id TEXT NOT NULL REFERENCES accounts(id),  -- the receiving company
+  name TEXT NOT NULL,                  -- who the originating account belongs to ("hppyc")
+  category_id INTEGER NOT NULL REFERENCES categories(id),  -- what it means to the receiver
   created_by INTEGER REFERENCES users(id),
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (last4, account_id)
 );

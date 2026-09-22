@@ -15,8 +15,16 @@ function senderLast4(description) {
   return m ? m[1] : null;
 }
 
+// Labels keyed by "last4|receiving account". The same sending account can
+// mean product sales to one company and a distribution to another.
 function senderMap(db) {
-  return new Map(db.prepare('SELECT last4, name, category_id FROM senders').all().map(r => [r.last4, r]));
+  return new Map(db.prepare('SELECT last4, account_id, name, category_id FROM senders').all()
+    .map(r => [`${r.last4}|${r.account_id}`, r]));
+}
+// A name already used for this sending account with any receiver, for prefills.
+function knownName(db, last4) {
+  const r = db.prepare('SELECT name FROM senders WHERE last4 = ? ORDER BY created_at LIMIT 1').get(last4);
+  return r ? r.name : null;
 }
 
 // Applies labels to inbound rows that are uncategorized or AI-categorized.
@@ -24,7 +32,7 @@ function senderMap(db) {
 function applySenders(db) {
   const senders = senderMap(db);
   if (senders.size === 0) return 0;
-  const rows = db.prepare(`SELECT uid, description, category_id FROM transactions
+  const rows = db.prepare(`SELECT uid, account_id, description, category_id FROM transactions
     WHERE amount_cents > 0 AND (category_id IS NULL OR category_source = 'ai')`).all();
   const set = db.prepare(`UPDATE transactions
     SET category_id = ?, category_source = 'rule', rule_id = NULL, categorized_by = NULL,
@@ -34,7 +42,7 @@ function applySenders(db) {
   db.transaction(() => {
     for (const r of rows) {
       const last4 = senderLast4(r.description);
-      const s = last4 && senders.get(last4);
+      const s = last4 && senders.get(`${last4}|${r.account_id}`);
       if (!s || r.category_id === s.category_id) continue;
       if (set.run(s.category_id, r.uid).changes) n++;
     }
@@ -47,9 +55,10 @@ function annotateSenders(db, rows) {
   const senders = senderMap(db);
   for (const r of rows) {
     const last4 = r.amount_cents > 0 ? senderLast4(r.description) : null;
-    const s = last4 && senders.get(last4);
+    const s = last4 && senders.get(`${last4}|${r.account_id}`);
     r.sender_last4 = last4;
-    r.sender_name = s ? s.name : null;
+    r.sender_name = s ? s.name : (last4 ? knownName(db, last4) : null);
+    r.sender_labeled = !!s;
     r.sender_category_id = s ? s.category_id : null;
   }
   return rows;
@@ -60,15 +69,19 @@ function annotateSenders(db, rows) {
 function unlabeledSenders(db, accountIds) {
   if (accountIds.length === 0) return [];
   const senders = senderMap(db);
-  const rows = db.prepare(`SELECT description, amount_cents, posted_at FROM transactions
-    WHERE amount_cents > 0 AND account_id IN (${accountIds.map(() => '?').join(',')})`).all(...accountIds);
+  const rows = db.prepare(`SELECT t.description, t.amount_cents, t.posted_at, t.account_id,
+      COALESCE(a.display_name, a.name) AS account_name
+    FROM transactions t JOIN accounts a ON a.id = t.account_id
+    WHERE t.amount_cents > 0 AND t.account_id IN (${accountIds.map(() => '?').join(',')})`).all(...accountIds);
   const agg = new Map();
   for (const r of rows) {
     const last4 = senderLast4(r.description);
-    if (!last4 || senders.has(last4)) continue;
-    const a = agg.get(last4) || { last4, count: 0, totalCents: 0, latest: 0 };
+    if (!last4 || senders.has(`${last4}|${r.account_id}`)) continue;
+    const key = `${last4}|${r.account_id}`;
+    const a = agg.get(key) || { last4, account_id: r.account_id, account_name: r.account_name,
+      known_name: knownName(db, last4), count: 0, totalCents: 0, latest: 0 };
     a.count++; a.totalCents += r.amount_cents; a.latest = Math.max(a.latest, r.posted_at);
-    agg.set(last4, a);
+    agg.set(key, a);
   }
   return [...agg.values()].sort((x, y) => y.count - x.count);
 }
