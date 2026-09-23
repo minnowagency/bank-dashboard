@@ -104,6 +104,22 @@ test/ai-categorize.test.js. Rules and manual categories always win; hidden accou
 are skipped. The owner can switch the feature off on the /rules page, and with no key
 present the app simply leaves unmatched transactions for the review queue.
 
+## 7c. Plaid (the live data source)
+Plaid replaces SimpleFIN for syncing. In the Plaid dashboard, get the Production
+client ID and secret, then on the droplet as root:
+```bash
+cp deploy/set-plaid-keys.sh /usr/local/sbin/bank-set-plaid-keys && chmod 700 /usr/local/sbin/bank-set-plaid-keys
+bank-set-plaid-keys          # hidden prompts; writes PLAID_* and APP_SECRET into .env (mode 600)
+systemctl restart bank-dashboard
+journalctl -u bank-dashboard -f   # expect "[plaid] configured"
+```
+Then, logged in as the owner, open **Connections** and click **Link a login** for each
+bank login. The app polls Plaid every 5 minutes; SimpleFIN stops the moment the first
+connection exists (its code and URL stay as a fallback).
+
+`APP_SECRET` encrypts the per-login access tokens stored in the database. Keep a copy
+alongside the backup passphrase: a restored database is useless for syncing without it.
+
 ## 8. Link the rest of the connections
 At bridge.simplefin.org, add the remaining nine Truist logins, the company Amex, and the
 personal Amex. They appear on the dashboard after the next sync (or restart the service to

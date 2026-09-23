@@ -20,6 +20,10 @@ function loadConfig({ envFile = '.env' } = {}) {
     host: get('HOST', '127.0.0.1'),
     accessUrl: get('SIMPLEFIN_ACCESS_URL', ''),
     anthropicApiKey: get('ANTHROPIC_API_KEY', ''),
+    plaidClientId: get('PLAID_CLIENT_ID', ''),
+    plaidSecret: get('PLAID_SECRET', ''),
+    plaidEnv: get('PLAID_ENV', 'production'),
+    appSecret: get('APP_SECRET', ''),
     cookieSecure: get('NODE_ENV', '') === 'production',
   };
 }

@@ -7,7 +7,7 @@ const { toCents } = require('./money');
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 
-function createApp(db, { cookieSecure = false } = {}) {
+function createApp(db, { cookieSecure = false, plaid = null } = {}) {
   const app = express();
   app.set('view engine', 'ejs');
   app.set('views', path.join(__dirname, 'views'));
@@ -52,13 +52,14 @@ function createApp(db, { cookieSecure = false } = {}) {
     res.redirect('/login');
   });
 
-  registerRoutes(app, db); // dashboard, txns, review, rules, accounts, export (Tasks 10-13)
+  registerRoutes(app, db, plaid);
   return app;
 }
 
 const { feedQuery, totals, visibleAccounts, periodSummary, groupByDay } = require('./feed');
 const { forecast } = require('./recurring');
 const { applySenders, annotateSenders, unlabeledSenders, senderCategoryOptions } = require('./senders');
+const { addItem, accessTokenFor } = require('./plaid');
 
 function reviewCount(db, user) {
   const ids = visibleAccounts(db, user).map(a => a.id);
@@ -83,7 +84,7 @@ function aiEnabled(db) {
   return !row || row.value === '1';
 }
 
-function registerRoutes(app, db) {
+function registerRoutes(app, db, plaid) {
   function visibleTxn(db, user, uid) {
     const t = db.prepare(`SELECT t.*, a.visibility, a.hidden FROM transactions t
       JOIN accounts a ON a.id = t.account_id WHERE t.uid = ?`).get(uid);
@@ -479,6 +480,81 @@ function registerRoutes(app, db) {
       selected: accountId, reviewCount: reviewCount(db, req.user),
     });
   });
+
+  // ---- Plaid connections (owner only) -------------------------------------
+  app.use('/connections', ownerOnly, express.json());
+  const plaidReady = !!(plaid && plaid.client && plaid.appSecret);
+
+  app.get('/connections', (req, res) => {
+    const items = db.prepare('SELECT * FROM plaid_items ORDER BY id').all()
+      .map(it => ({ ...it, accounts: accountsForItem(db, it) }));
+    res.render('connections', { title: 'Connections', active: 'connections', items, plaidReady,
+      reviewCount: reviewCount(db, req.user) });
+  });
+
+  function accountsForItem(db, item) {
+    const ids = JSON.parse(item.account_ids || '[]');
+    if (ids.length === 0) return [];
+    return db.prepare(`SELECT display_name, name FROM accounts WHERE source_account_id IN (${ids.map(() => '?').join(',')})`).all(...ids);
+  }
+
+  app.post('/connections/link-token', async (req, res) => {
+    if (!plaidReady) return res.status(503).json({ error: 'Plaid is not configured' });
+    try {
+      const body = { user: { client_user_id: `owner-${req.user.id}` }, client_name: 'Bank Dashboard',
+        country_codes: ['US'], language: 'en' };
+      const itemId = req.body && req.body.item_id ? Number(req.body.item_id) : null;
+      if (itemId) {
+        const item = db.prepare('SELECT * FROM plaid_items WHERE id = ?').get(itemId);
+        if (!item) return res.status(404).json({ error: 'Unknown connection' });
+        body.access_token = accessTokenFor(db, item, plaid.appSecret); // update mode: re-authenticate
+      } else {
+        body.products = ['transactions'];
+        body.transactions = { days_requested: 730 };
+      }
+      const r = await plaid.client.linkTokenCreate(body);
+      res.json({ link_token: r.data.link_token });
+    } catch (err) {
+      res.status(502).json({ error: plaidMessage(err) });
+    }
+  });
+
+  app.post('/connections/exchange', async (req, res) => {
+    if (!plaidReady) return res.status(503).json({ error: 'Plaid is not configured' });
+    const publicToken = req.body && req.body.public_token;
+    if (!publicToken) return res.status(400).json({ error: 'public_token required' });
+    try {
+      const existing = req.body.item_id ? db.prepare('SELECT * FROM plaid_items WHERE id = ?').get(Number(req.body.item_id)) : null;
+      if (existing) {
+        // update mode: the item keeps its token; just clear the error
+        db.prepare("UPDATE plaid_items SET status = 'ok', error = NULL WHERE id = ?").run(existing.id);
+      } else {
+        const r = await plaid.client.itemPublicTokenExchange({ public_token: publicToken });
+        addItem(db, { itemId: r.data.item_id, accessToken: r.data.access_token,
+          institutionName: req.body.institution_name || null, now: Math.floor(Date.now() / 1000) }, plaid.appSecret);
+      }
+      if (plaid.syncNow) plaid.syncNow().catch(() => {});
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(502).json({ error: plaidMessage(err) });
+    }
+  });
+
+  app.post('/connections/:id/delete', async (req, res) => {
+    const item = db.prepare('SELECT * FROM plaid_items WHERE id = ?').get(Number(req.params.id));
+    if (!item) return res.status(404).send('Not found');
+    if (plaidReady) {
+      try { await plaid.client.itemRemove({ access_token: accessTokenFor(db, item, plaid.appSecret) }); }
+      catch (err) { /* already gone at Plaid, or Plaid down: still remove locally */ }
+    }
+    db.prepare('DELETE FROM plaid_items WHERE id = ?').run(item.id);
+    res.redirect('/connections');
+  });
+
+  function plaidMessage(err) {
+    const d = err && err.response && err.response.data;
+    return d && d.error_message ? `${d.error_code}: ${d.error_message}` : String((err && err.message) || err);
+  }
 
   app.get('/export.csv', (req, res) => {
     const { rows } = feedQuery(db, req.user, req.query, { limit: 0 });

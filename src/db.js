@@ -5,11 +5,24 @@ const path = require('path');
 const SEED_CATEGORIES = ['Payroll', 'Shipping', 'Supplies', 'Taxes', 'Fees',
   'Transfers', 'Revenue', 'Distributions', 'Capital contributions', 'Utilities', 'Insurance', 'Other'];
 
+// Columns that schema.sql indexes must exist before schema.sql runs on an
+// existing database, so they are added here, ahead of it.
+function preMigrate(raw) {
+  const has = (t) => raw.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name=?`).get(t);
+  if (has('transactions')) {
+    const tcols = raw.prepare('PRAGMA table_info(transactions)').all().map(c => c.name);
+    if (!tcols.includes('plaid_txn_id')) raw.exec('ALTER TABLE transactions ADD COLUMN plaid_txn_id TEXT');
+  }
+}
+
 // CREATE TABLE IF NOT EXISTS never alters a table that already exists, so
 // columns added after first deploy are backfilled here.
 function migrate(db, schemaSql) {
   const cols = db.prepare('PRAGMA table_info(accounts)').all().map(c => c.name);
   if (!cols.includes('hidden')) db.exec('ALTER TABLE accounts ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
+  if (!cols.includes('source')) db.exec("ALTER TABLE accounts ADD COLUMN source TEXT NOT NULL DEFAULT 'simplefin'");
+  if (!cols.includes('source_account_id')) db.exec('ALTER TABLE accounts ADD COLUMN source_account_id TEXT');
+  if (!cols.includes('mask')) db.exec('ALTER TABLE accounts ADD COLUMN mask TEXT');
   rebuildTransactionsIfStale(db, schemaSql);
   repairIntercompanyTransfers(db);
   rebuildSendersIfStale(db, schemaSql);
@@ -98,6 +111,7 @@ function rebuildTransactionsIfStale(db, schemaSql) {
 function openDb(dbPath) {
   if (dbPath !== ':memory:') fs.mkdirSync(path.dirname(path.resolve(dbPath)), { recursive: true });
   const raw = new DatabaseSync(dbPath);
+  preMigrate(raw);
   const db = {
     prepare: (sql) => raw.prepare(sql),
     exec: (sql) => raw.exec(sql),
