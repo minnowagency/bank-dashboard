@@ -28,7 +28,9 @@ Claude Opus 5, effort low, structured output via zod. **Privacy contract:** exac
 - Shared post-processing after either source: `sync.postProcess` (transfers → senders → rules → AI → recurring refresh).
 
 ## Server and deploy
-- Droplet `root@67.205.187.129` (DigitalOcean NYC1, Ubuntu 24.04, Node 22). App at `/opt/bank-dashboard` as user `bankdash`; systemd unit `bank-dashboard`; Caddy with a Let's Encrypt **short-lived IP certificate** (Caddyfile needs `tls { issuer acme { profile shortlived } }`). Live at https://67.205.187.129.
+- Droplet `root@67.205.187.129` (DigitalOcean NYC1, Ubuntu 24.04, Node 22). App at `/opt/bank-dashboard` as user `bankdash`; systemd unit `bank-dashboard`, listening on 127.0.0.1:3000.
+- **Tailnet-only since 2026-09-24:** reached at https://bank-dashboard.tail3844ec.ts.net via `tailscale serve --bg --https=443 http://127.0.0.1:3000` (Tailscale account = Michael's GitHub; node key expiry disabled). ufw allows only SSH; ports 80/443 closed and **Caddy stopped + disabled** (its IP-cert Caddyfile is kept; `deploy/Caddyfile`). The public IP no longer serves the dashboard. Rollback: `ufw allow 80/tcp && ufw allow 443/tcp && systemctl enable --now caddy` (ufw rule backups in `/root/ufw-user*.rules.bak-20260924`).
+- Recovery path: DO Droplet Console (connects over SSH from DO's network, e.g. 162.243.190.66 — keep that working if SSH is ever restricted) and the DO Recovery Console (root password set 2026-09-24, stored in Michael's password manager).
 - **Deploy procedure** (from a checkout, tests green):
   1. `ssh root@67.205.187.129 'sqlite3 /opt/bank-dashboard/data/bank.sqlite3 ".backup /root/bank-pre-<change>-$(date +%Y%m%d-%H%M%S).sqlite3"'`
   2. `rsync -a --exclude node_modules --exclude data --exclude .env --exclude .superpowers --exclude .claude --exclude .git ./ root@67.205.187.129:/opt/bank-dashboard/`
@@ -45,6 +47,8 @@ Claude Opus 5, effort low, structured output via zod. **Privacy contract:** exac
 - Dashboard defaults to "This month": tests that assert on fixture rows pass `?period=all`.
 
 ## Open items
+- **Security hardening in progress** (started 2026-09-24, staged; do before linking real Plaid logins). Done: Stage 0 inventory, Stage 1 Tailscale + public 80/443 closed. Next: verify phone reaches the ts.net URL (phone wasn't in the tailnet yet) and optionally test Plaid Link OAuth pop-up from the ts.net origin with Sandbox keys; Stage 2 TOTP 2FA + recovery codes, per-IP rate limit, hash session tokens, shorter/idle sessions, security headers, drop X-Powered-By; Stage 3 non-root sudo user (both SSH keys), then disable root login + X11 forwarding, decide SSH Tailscale-only (must keep DO console ranges); Stage 4 unattended-upgrades auto-reboot + pending kernel reboot, encrypt/delete unencrypted `/root/bank-pre-*.sqlite3` copies, DB perms 600/700, optional Spaces versioning; Stage 5 summary, Plaid security-questionnaire cheat-sheet, short infosec policy. After Plaid works: revoke the SimpleFIN access URL (plaintext read credential in .env).
+- Plaid production application pending approval (2026-09-24) — keys not yet on the server.
 - Link the remaining Truist logins and the Amex accounts through Plaid; then run the runbook §9 checks (Amex payment signs pair as transfers; how employee cards appear — Plaid provides no card-member field).
 - Label the wire senders on `/rules` (five sender→receiver pairs were pending).
 - Once labeled data accumulates: average-range monthly forecast per sender (spec `2026-09-22-recurring-forecast-design.md`, Future).
