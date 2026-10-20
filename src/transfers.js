@@ -16,12 +16,16 @@ function detectTransfers(db) {
       -- income for the receiver, not an internal transfer. Only a bank
       -- account paying a credit card is internal.
       AND aa.kind != ab.kind
-      AND a.category_id IS NULL AND b.category_id IS NULL
+      -- A pair outranks an AI guess (the bank side is often categorized before
+      -- the card is linked); manual and rule categories are never touched.
+      AND (a.category_id IS NULL OR a.category_source = 'ai')
+      AND (b.category_id IS NULL OR b.category_source = 'ai')
       AND a.transfer_pair_uid IS NULL AND b.transfer_pair_uid IS NULL
     ORDER BY gap ASC, a.posted_at ASC, a.uid ASC`).all(WINDOW_SECONDS);
 
   const mark = db.prepare(`UPDATE transactions
-    SET category_id = ?, category_source = 'transfer', transfer_pair_uid = ?
+    SET category_id = ?, category_source = 'transfer', transfer_pair_uid = ?,
+      suggested_category_id = NULL, ai_confidence = NULL, ai_reason = NULL
     WHERE uid = ?`);
   const used = new Set();
   let pairs = 0;

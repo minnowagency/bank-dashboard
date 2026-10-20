@@ -75,3 +75,30 @@ test('bank-to-bank movement is intercompany income, never paired as a transfer',
   assert.equal(detectTransfers(db), 0);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM transactions WHERE category_id IS NOT NULL').get().n, 0);
 });
+
+test('a card payment pairs even when AI already categorized one side (card linked after the bank); manual and rule never', () => {
+  const db = openDb(':memory:');
+  seed(db);
+  const transfers = db.prepare("SELECT id FROM categories WHERE name='Transfers'").get().id;
+  const supplies = db.prepare("SELECT id FROM categories WHERE name='Supplies'").get().id;
+  const mk = (uid, src, cat) => db.prepare(`UPDATE transactions SET category_id=?, category_source=?,
+    suggested_category_id=?, ai_confidence='high', ai_reason='x' WHERE uid=?`).run(cat, src, cat, uid);
+  const aiOut = txn(db, 'CHK', -1439434, T0);
+  mk(aiOut, 'ai', transfers);
+  const cardIn = txn(db, 'AMX', 1439434, T0 - 2 * DAY);
+  const manualOut = txn(db, 'CHK', -500000, T0);
+  mk(manualOut, 'manual', supplies);
+  txn(db, 'AMX2', 500000, T0);
+  const ruleOut = txn(db, 'CHK', -700000, T0);
+  mk(ruleOut, 'rule', supplies);
+  txn(db, 'AMX2', 700000, T0);
+
+  assert.equal(detectTransfers(db), 1);
+  const a = { ...db.prepare('SELECT * FROM transactions WHERE uid=?').get(aiOut) };
+  assert.equal(a.transfer_pair_uid, cardIn);
+  assert.equal(a.category_source, 'transfer');
+  assert.equal(a.ai_confidence, null, 'AI annotation cleared once the pair decides');
+  assert.equal(db.prepare('SELECT transfer_pair_uid FROM transactions WHERE uid=?').get(cardIn).transfer_pair_uid, aiOut);
+  assert.equal(db.prepare('SELECT category_source FROM transactions WHERE uid=?').get(manualOut).category_source, 'manual');
+  assert.equal(db.prepare('SELECT category_source FROM transactions WHERE uid=?').get(ruleOut).category_source, 'rule');
+});
