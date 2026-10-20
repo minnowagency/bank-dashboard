@@ -1,0 +1,94 @@
+<%- include('_header', { title, reviewCount, active }) %>
+<h1>Invoices</h1>
+<p class="note">Bills from vendors on terms. Open invoices go into the <a href="/forecast">Forecast</a> on their due date; past-due ones count in this week. When a payment of exactly the invoice amount leaves the paying account, the invoice is marked paid automatically.</p>
+<% if (error) { %><div class="banner"><strong>Not saved:</strong> <%= error %></div><% } %>
+<% const day = (t) => t ? fmtDate(t) : ''; const f = form || {}; %>
+
+<h2>Open (<%= open.length %>)<% Object.entries(totals).forEach(([name, c]) => { %> <span class="note">· <%= name %> <%= fmtUSD(c) %></span><% }) %></h2>
+<% if (open.length === 0) { %><div class="feed"><div class="empty">No open invoices.</div></div><% } else { %>
+<div class="tablewrap">
+<table>
+  <tr><th>Due</th><th>Vendor</th><th>Invoice #</th><th>Paying account</th><th class="num">Amount</th><th></th></tr>
+  <% open.forEach(i => { %>
+    <form id="inv-<%= i.id %>" method="post" action="/invoices/<%= i.id %>/edit"></form>
+    <tr>
+      <td style="white-space:nowrap"><input form="inv-<%= i.id %>" type="date" name="due_date" value="<%= day(i.due_date) %>">
+        <% if (i.pastDue) { %><span class="owed">past due</span><% } %></td>
+      <td><input form="inv-<%= i.id %>" name="vendor_name" value="<%= i.vendor_name %>" size="14" list="vendor-names">
+        <% if (i.note) { %><div class="note"><%= i.note %></div><% } %></td>
+      <td><input form="inv-<%= i.id %>" name="invoice_number" value="<%= i.invoice_number || '' %>" size="8"></td>
+      <td><select form="inv-<%= i.id %>" name="account_id"><% accounts.forEach(a => { %><option value="<%= a.id %>" <%= a.id === i.account_id ? 'selected' : '' %>><%= a.display_name || a.name %></option><% }) %></select></td>
+      <td class="num"><input form="inv-<%= i.id %>" name="amount" value="<%= (i.amount_cents / 100).toFixed(2) %>" size="9" class="num">
+        <input form="inv-<%= i.id %>" type="hidden" name="invoice_date" value="<%= day(i.invoice_date) %>">
+        <input form="inv-<%= i.id %>" type="hidden" name="replaces_recurring_id" value="<%= i.replaces_recurring_id || '' %>">
+        <input form="inv-<%= i.id %>" type="hidden" name="note" value="<%= i.note || '' %>"></td>
+      <td style="white-space:nowrap"><button form="inv-<%= i.id %>">Save</button>
+        <form method="post" action="/invoices/<%= i.id %>/paid" class="inline"><button class="primary">Mark paid</button></form>
+        <form method="post" action="/invoices/<%= i.id %>/void" class="inline"><button>Void</button></form></td>
+    </tr>
+  <% }) %>
+</table>
+</div>
+<% } %>
+
+<h2>Add an invoice</h2>
+<form method="post" action="/invoices" class="filters">
+  <label>Vendor <input name="vendor_name" list="vendor-names" required value="<%= f.vendor_name || '' %>" placeholder="Acme Supply"></label>
+  <label>Amount $ <input name="amount" size="9" required value="<%= f.amount || '' %>"></label>
+  <label>Invoice date <input type="date" name="invoice_date" value="<%= f.invoice_date || '' %>"></label>
+  <label>Due date <input type="date" name="due_date" value="<%= f.due_date || '' %>"></label>
+  <label>Paying account <select name="account_id"><option value="">Vendor's default</option><% accounts.forEach(a => { %><option value="<%= a.id %>" <%= f.account_id === a.id ? 'selected' : '' %>><%= a.display_name || a.name %></option><% }) %></select></label>
+  <label>Invoice # <input name="invoice_number" size="8" value="<%= f.invoice_number || '' %>"></label>
+  <% if (recurring.length) { %>
+  <label>Replaces recurring <select name="replaces_recurring_id"><option value="">—</option><% recurring.forEach(r => { %><option value="<%= r.id %>"><%= r.display_name %></option><% }) %></select></label>
+  <% } %>
+  <label>Note <input name="note" size="16" value="<%= f.note || '' %>"></label>
+  <button class="primary">Add</button>
+</form>
+<p class="note">Leave the due date blank to use the invoice date plus the vendor's terms (invoice date defaults to today). "Replaces recurring" stops a confirmed recurring payment to the same vendor from being counted a second time that month.</p>
+
+<h2>Vendors &amp; terms</h2>
+<datalist id="vendor-names"><% vendors.forEach(v => { %><option value="<%= v.name %>"><% }) %></datalist>
+<div class="tablewrap">
+<table>
+  <tr><th>Vendor</th><th>Terms</th><th>Default paying account</th><th></th></tr>
+  <% vendors.forEach(v => { %>
+    <form id="ven-<%= v.id %>" method="post" action="/vendors"><input type="hidden" name="id" value="<%= v.id %>"></form>
+    <tr>
+      <td><input form="ven-<%= v.id %>" name="name" value="<%= v.name %>" size="16"></td>
+      <td>Net <input form="ven-<%= v.id %>" name="terms_days" value="<%= v.terms_days %>" size="3" class="num"></td>
+      <td><select form="ven-<%= v.id %>" name="account_id"><option value="">—</option><% accounts.forEach(a => { %><option value="<%= a.id %>" <%= a.id === v.account_id ? 'selected' : '' %>><%= a.display_name || a.name %></option><% }) %></select></td>
+      <td><button form="ven-<%= v.id %>">Save</button></td>
+    </tr>
+  <% }) %>
+  <tr>
+    <form id="ven-new" method="post" action="/vendors"></form>
+    <td><input form="ven-new" name="name" placeholder="New vendor" size="16" required></td>
+    <td>Net <input form="ven-new" name="terms_days" value="30" size="3" class="num"></td>
+    <td><select form="ven-new" name="account_id"><option value="">—</option><% accounts.forEach(a => { %><option value="<%= a.id %>"><%= a.display_name || a.name %></option><% }) %></select></td>
+    <td><button form="ven-new" class="primary">Add vendor</button></td>
+  </tr>
+</table>
+</div>
+
+<% if (closed.length) { %>
+<h2>Recently paid or voided</h2>
+<div class="tablewrap">
+<table>
+  <tr><th>Due</th><th>Vendor</th><th>Account</th><th class="num">Amount</th><th>Status</th><th></th></tr>
+  <% closed.forEach(i => { %>
+    <tr>
+      <td class="note"><%= day(i.due_date) %></td>
+      <td><%= i.vendor_name %><%= i.invoice_number ? ' #' + i.invoice_number : '' %></td>
+      <td class="note"><%= i.account_name %></td>
+      <td class="num"><%= fmtUSD(i.amount_cents) %></td>
+      <td><% if (i.status === 'paid') { %><span class="pos">Paid</span> <span class="note"><%= day(i.paid_at) %><% if (i.paid_description) { %> · matched “<%= i.paid_description %>”<% } %></span><% } else { %><span class="note">Void</span><% } %></td>
+      <td style="white-space:nowrap">
+        <% if (i.paid_txn_uid) { %><form method="post" action="/invoices/<%= i.id %>/not-this-payment" class="inline"><button>Not this payment</button></form><% } %>
+        <form method="post" action="/invoices/<%= i.id %>/reopen" class="inline"><button>Reopen</button></form></td>
+    </tr>
+  <% }) %>
+</table>
+</div>
+<% } %>
+<%- include('_footer') %>

@@ -589,6 +589,59 @@ function registerRoutes(app, db, plaid) {
     });
   });
 
+  // ---- Vendor invoices (owner and member, on accounts they can see) -------
+  const invoices = require('./invoices');
+  const invoicePage = (req, res, { error = null, status = 200 } = {}) => {
+    const now = Math.floor(Date.now() / 1000);
+    const accounts = visibleAccounts(db, req.user);
+    const ids = accounts.map(a => a.id);
+    const recurring = ids.length === 0 ? [] : db.prepare(`SELECT r.id, r.display_name, r.account_id FROM recurring_items r
+      WHERE r.status IN ('confirmed','manual') AND r.account_id IN (${ids.map(() => '?').join(',')})
+      ORDER BY r.display_name`).all(...ids);
+    const list = invoices.listInvoices(db, req.user, now);
+    const totals = {};
+    for (const i of list.open) totals[i.account_name] = (totals[i.account_name] || 0) + i.amount_cents;
+    res.status(status).render('invoices', { title: 'Invoices', active: 'invoices', reviewCount: reviewCount(db, req.user),
+      ...list, totals, accounts, recurring, error, form: error ? req.body : {} });
+  };
+
+  app.get('/invoices', (req, res) => invoicePage(req, res));
+
+  app.post('/invoices', (req, res) => {
+    try { invoices.saveInvoice(db, req.user, req.body, Math.floor(Date.now() / 1000)); }
+    catch (err) { return invoicePage(req, res, { error: err.message, status: 400 }); }
+    res.redirect('/invoices');
+  });
+
+  app.post('/invoices/:id/edit', (req, res) => {
+    if (!invoices.getInvoice(db, req.user, req.params.id)) return res.status(404).send('Not found');
+    try { invoices.saveInvoice(db, req.user, { ...req.body, id: req.params.id }, Math.floor(Date.now() / 1000)); }
+    catch (err) { return invoicePage(req, res, { error: err.message, status: 400 }); }
+    res.redirect('/invoices');
+  });
+
+  for (const [action, status] of [['paid', 'paid'], ['void', 'void'], ['reopen', 'open']]) {
+    app.post(`/invoices/:id/${action}`, (req, res) => {
+      if (!invoices.setStatus(db, req.user, req.params.id, status, Math.floor(Date.now() / 1000))) return res.status(404).send('Not found');
+      res.redirect('/invoices');
+    });
+  }
+
+  app.post('/invoices/:id/not-this-payment', (req, res) => {
+    if (!invoices.rejectMatch(db, req.user, req.params.id)) return res.status(404).send('Not found');
+    res.redirect('/invoices');
+  });
+
+  app.post('/vendors', (req, res) => {
+    const accountId = String(req.body.account_id || '') || null;
+    if (accountId && !visibleAccounts(db, req.user).some(a => a.id === accountId)) return res.status(404).send('Not found');
+    const id = req.body.id ? Number(req.body.id) : null;
+    if (id && !invoices.listInvoices(db, req.user, 0).vendors.some(v => v.id === id)) return res.status(404).send('Not found');
+    try { invoices.saveVendor(db, { id, name: req.body.name, terms_days: req.body.terms_days, account_id: accountId }, Math.floor(Date.now() / 1000), req.user.id); }
+    catch (err) { return invoicePage(req, res, { error: err.message, status: 400 }); }
+    res.redirect('/invoices');
+  });
+
   // ---- Plaid connections (owner only) -------------------------------------
   app.use('/connections', ownerOnly, express.json());
   const plaidReady = !!(plaid && plaid.client && plaid.appSecret);

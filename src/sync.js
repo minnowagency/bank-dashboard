@@ -1,4 +1,5 @@
 const { detectTransfers } = require('./transfers');
+const { matchPayments } = require('./invoices');
 const { applyRulesToUncategorized } = require('./rules');
 const { refreshCandidates } = require('./recurring');
 const { applySenders } = require('./senders');
@@ -82,6 +83,9 @@ async function postProcess(db, { aiCategorizeFn = null, log = () => {}, now = ()
   const transferPairs = detectTransfers(db);
   const senderMatches = applySenders(db);
   const ruleMatches = applyRulesToUncategorized(db);
+  let invoicesPaid = 0;
+  try { invoicesPaid = matchPayments(db); }
+  catch (err) { log(`[invoices] matching failed: ${String((err && err.message) || err)}`); }
   // The AI step is best-effort: a failure leaves rows uncategorized for the
   // review queue rather than failing the sync.
   let ai = null;
@@ -91,7 +95,7 @@ async function postProcess(db, { aiCategorizeFn = null, log = () => {}, now = ()
   }
   try { refreshCandidates(db, now()); }
   catch (err) { log(`[recurring] refresh failed: ${String((err && err.message) || err)}`); }
-  return { transferPairs, senderMatches, ruleMatches, ai };
+  return { transferPairs, senderMatches, ruleMatches, invoicesPaid, ai };
 }
 
 module.exports = { runSync, postProcess, OVERLAP_SECONDS, guessKind };

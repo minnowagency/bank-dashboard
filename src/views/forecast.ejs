@@ -1,5 +1,5 @@
 <%- include('_header', { title, reviewCount, active }) %>
-<h1>Forecast <span class="note">next <%= f.weeks %> weeks, from confirmed recurring items</span></h1>
+<h1>Forecast <span class="note">next <%= f.weeks %> weeks, from confirmed recurring items and open invoices</span></h1>
 
 <div class="chips">
   <a class="chip <%= !selected ? 'on' : '' %>" href="/forecast">All accounts</a>
@@ -18,7 +18,7 @@
   <h2><%= acct.name %> <span class="note">· <%= acct.kind === 'credit' ? 'owed now ' + fmtUSD(-acct.balanceCents) : 'balance now ' + fmtUSD(acct.balanceCents) %></span></h2>
 
   <% if (!hasItems) { %>
-    <div class="feed"><div class="empty">No confirmed recurring items for this account yet — confirm some on the <a href="/recurring">Recurring</a> page.</div></div>
+    <div class="feed"><div class="empty">Nothing expected for this account yet — confirm recurring items on the <a href="/recurring">Recurring</a> page or add <a href="/invoices">invoices</a>.</div></div>
   <% } else { %>
     <% if (acct.overdue.length) { %>
       <div class="banner"><strong>Overdue:</strong>
@@ -37,7 +37,7 @@
             <% if (w.items.length === 0) { %><span class="note">—</span><% } %>
             <% w.items.forEach(i => { %>
               <div><span class="<%= i.kind === 'income' ? 'pos' : '' %>"><%= i.kind === 'income' ? '+' : '−' %><%= fmtUSD(i.cents) %></span>
-                <%= i.name %> <span class="note"><%= fmtDate(i.date) %><%= i.late ? ' · late' : '' %></span></div>
+                <%= i.name %> <span class="note"><%= fmtDate(i.date) %><%= i.late ? ' · late' : '' %></span><% if (i.pastDue) { %> <span class="owed">past due</span><% } %></div>
             <% }) %>
           </td>
           <td class="num pos"><%= w.inCents ? fmtUSD(w.inCents) : '' %></td>
@@ -51,5 +51,5 @@
     </div>
   <% } %>
 <% }) %>
-<p class="note" style="margin-top:14px">Balances assume nothing besides confirmed recurring items. One-off income and spending will move the real number.</p>
+<p class="note" style="margin-top:14px">Balances assume nothing besides confirmed recurring items and open invoices. One-off income and spending will move the real number.</p>
 <%- include('_footer') %>

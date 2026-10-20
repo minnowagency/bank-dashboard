@@ -160,3 +160,32 @@ CREATE TABLE IF NOT EXISTS card_statements (   -- Plaid Liabilities, one row per
   is_overdue INTEGER,
   fetched_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS vendors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  terms_days INTEGER NOT NULL DEFAULT 30,      -- Net N
+  account_id TEXT REFERENCES accounts(id) ON DELETE SET NULL,   -- default paying account
+  created_by INTEGER REFERENCES users(id),
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS invoices (           -- bills owed to vendors on terms; forecast outflows
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  vendor_id INTEGER NOT NULL REFERENCES vendors(id),
+  account_id TEXT NOT NULL REFERENCES accounts(id),             -- paying account (= company)
+  invoice_number TEXT,
+  amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+  invoice_date INTEGER,
+  due_date INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','paid','void')),
+  paid_txn_uid TEXT,                            -- the matched payment, when found automatically
+  paid_at INTEGER,
+  rejected_txn_uids TEXT NOT NULL DEFAULT '[]', -- payments the user said aren't this invoice
+  replaces_recurring_id INTEGER REFERENCES recurring_items(id) ON DELETE SET NULL,
+  note TEXT,
+  created_by INTEGER REFERENCES users(id),
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS invoices_open ON invoices(status, account_id, due_date);

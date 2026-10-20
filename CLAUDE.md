@@ -22,6 +22,9 @@ A private dashboard for Michael's companies' bank accounts and Amex cards: balan
 ## AI categorization (`src/ai-categorize.js`)
 Claude Opus 5, effort low, structured output via zod. **Privacy contract:** exactly five fields leave the server per transaction (batch ref, date, amount, digit-masked description, "cardholder A" label); `test/ai-categorize.test.js` seeds secrets and fails the build if anything else could appear. High confidence applies (`category_source='ai'`); medium/low become review-queue suggestions. Key in `.env` (`ANTHROPIC_API_KEY`); owner toggle on `/rules`.
 
+## Vendor invoices (`src/invoices.js`, spec `2026-10-20-vendor-invoices-design.md`)
+Vendors with terms (Net N, default paying account) and invoices on `/invoices` (owner + member, visible accounts only; a vendor created from a private account's invoice inherits that account so it stays hidden from members). Open invoices are forecast outflows on their paying account (past due → week 1); `replaces_recurring_id` suppresses the nearest recurring occurrence. `matchPayments` (run in `sync.postProcess` and on save) marks an invoice paid on an exact-amount outgoing transaction on that account within −30/+30 days; "Not this payment" remembers rejections.
+
 ## Data source
 - **Plaid** (`src/plaid.js`, spec `2026-09-23-plaid-connector-design.md`): owner-only `/connections` page with Plaid Link; polls `/transactions/sync` every 5 minutes (no webhooks — no domain yet); 24 months of history; access tokens AES-256-GCM in `plaid_items` with `APP_SECRET` from `.env`. Accounts match existing rows by mask; overlap with older history is de-duplicated; pending→posted migrates in place. Plaid amounts are positive-for-money-out (flipped on ingest); dates are calendar days → Eastern noon.
 - **SimpleFIN** (`src/simplefin.js`, `src/sync.js`) was the original source; it auto-disables once any Plaid item exists and stays as a fallback.
