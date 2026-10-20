@@ -203,3 +203,9 @@ tr.sel td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .qr svg { display: block; width: 100%; height: auto; }
 code.secret { word-break: break-all; font-size: 1.05em; letter-spacing: .05em; }
 pre.recovery-codes { font-size: 1.1em; line-height: 1.7; padding: 12px 16px; background: rgba(127,127,127,.12); border-radius: 8px; max-width: 260px; }
+
+/* Card statement details on credit tiles */
+.tile .stmt { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(127,127,127,.18); font-size: 10.5px; line-height: 1.5; color: var(--dim); }
+.tile .stmt .due.soon { color: var(--owed); font-weight: 650; }
+.tile .stmt .due.overdue { color: #fff; background: var(--owed); border-radius: 4px; padding: 0 4px; font-weight: 700; }
+.tile .stmt .due.paid { color: var(--accent); }

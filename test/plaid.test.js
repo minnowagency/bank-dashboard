@@ -267,3 +267,63 @@ test('repairOverlapDuplicates: dry run changes nothing; apply merges copies into
   assert.equal(row('B|sf4').uid, 'B|sf4', 'unmatched rows are reported, never deleted');
   assert.equal(repairOverlapDuplicates(db, { apply: true }).merged.length, 0, 'idempotent');
 });
+
+// ---- card statement details (Plaid Liabilities) ----
+const LIAB = {
+  accounts: ACCOUNTS,
+  liabilities: { credit: [{
+    account_id: 'pa-amx', last_statement_balance: 4120.55, last_statement_issue_date: '2026-09-28',
+    minimum_payment_amount: 41.21, next_payment_due_date: '2026-10-25', last_payment_amount: 4120.55,
+    last_payment_date: '2026-10-11', is_overdue: false, aprs: [],
+  }] },
+};
+const statementSync = (db, { liabilities, liabilitiesGet }) => {
+  addItem(db, { itemId: 'item-1', accessToken: 'access-production-abc', institutionName: 'American Express', now: NOW }, KEY);
+  if (liabilities) db.prepare("UPDATE plaid_items SET liabilities = 'on' WHERE item_id = 'item-1'").run();
+  return fakePlaid({
+    accountsGet: async () => ({ accounts: ACCOUNTS }),
+    transactionsSync: async () => ({ added: [], modified: [], removed: [], next_cursor: 'c', has_more: false }),
+    liabilitiesGet: liabilitiesGet || (async () => LIAB),
+  });
+};
+
+test('statement details are never requested (or billed) until the owner enables them for that login', async () => {
+  const db = openDb(':memory:');
+  const client = statementSync(db, { liabilities: false });
+  await plaidSync(db, { client, appSecret: KEY, now: () => NOW });
+  assert.ok(!client.calls.some(c => c[0] === 'liabilitiesGet'));
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM card_statements').get().n, 0);
+});
+
+test('enabled: statement balance, minimum, due date and last payment are stored per card, refreshed at most every 6 hours', async () => {
+  const db = openDb(':memory:');
+  const client = statementSync(db, { liabilities: true });
+  let t = NOW;
+  await plaidSync(db, { client, appSecret: KEY, now: () => t });
+  const s = { ...db.prepare("SELECT * FROM card_statements WHERE account_id = 'plaid:pa-amx'").get() };
+  assert.equal(s.statement_balance_cents, 412055);
+  assert.equal(s.minimum_payment_cents, 4121);
+  assert.equal(s.last_payment_cents, 412055);
+  assert.equal(new Date(s.statement_date * 1000).toISOString().slice(0, 10), '2026-09-28');
+  assert.equal(new Date(s.due_date * 1000).toISOString().slice(0, 10), '2026-10-25');
+  assert.equal(new Date(s.last_payment_date * 1000).toISOString().slice(0, 10), '2026-10-11');
+  assert.equal(s.is_overdue, 0);
+  const calls = () => client.calls.filter(c => c[0] === 'liabilitiesGet').length;
+  t = NOW + 3600;
+  await plaidSync(db, { client, appSecret: KEY, now: () => t });
+  assert.equal(calls(), 1, 'not again within 6 hours');
+  t = NOW + 6 * 3600 + 1;
+  await plaidSync(db, { client, appSecret: KEY, now: () => t });
+  assert.equal(calls(), 2);
+});
+
+test('a statement-details failure is recorded on the login but never breaks the transaction sync', async () => {
+  const db = openDb(':memory:');
+  const err = Object.assign(new Error('400'), { response: { data: { error_code: 'PRODUCTS_NOT_SUPPORTED', error_message: 'not supported' } } });
+  const client = statementSync(db, { liabilities: true, liabilitiesGet: async () => { throw err; } });
+  const r = await plaidSync(db, { client, appSecret: KEY, now: () => NOW });
+  assert.equal(r.ok, true);
+  const item = db.prepare("SELECT * FROM plaid_items WHERE item_id = 'item-1'").get();
+  assert.equal(item.status, 'ok');
+  assert.match(item.liabilities_error, /PRODUCTS_NOT_SUPPORTED/);
+});

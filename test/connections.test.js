@@ -107,3 +107,31 @@ test('without Plaid configured the page explains what is missing instead of fail
   assert.match(page.text, /isn't configured/);
   assert.equal((await request(a).post('/connections/link-token').set('Cookie', owner).send({})).status, 503);
 });
+
+test('statement details: consent link asks only for liabilities on that login; completing it enables the fetch', async () => {
+  const { app: a, db, client, synced } = app();
+  addItem(db, { itemId: 'item-amx', accessToken: 'access-amx', institutionName: 'American Express', now: 1 }, KEY);
+  const id = db.prepare("SELECT id FROM plaid_items WHERE item_id='item-amx'").get().id;
+  db.prepare(`INSERT INTO accounts (id, name, kind, source, source_account_id) VALUES ('plaid:pa-gold', 'Business Gold Card', 'credit', 'plaid', 'pa-gold')`).run();
+  db.prepare(`UPDATE plaid_items SET account_ids = '["pa-gold"]' WHERE id = ?`).run(id);
+  const owner = await login(a, 'michael', 'ownerpass1');
+
+  const page = await request(a).get('/connections').set('Cookie', owner);
+  assert.match(page.text, new RegExp(`class="[^"]*js-statements[^"]*" data-id="${id}"`));
+
+  await request(a).post('/connections/link-token').set('Cookie', owner).send({ item_id: id, add: 'liabilities' });
+  const req = client.calls.find(c => c[0] === 'linkTokenCreate')[1];
+  assert.equal(req.access_token, 'access-amx', 'update mode on the existing login');
+  assert.deepEqual(req.additional_consented_products, ['liabilities']);
+  assert.equal(req.products, undefined);
+
+  const r = await request(a).post('/connections/exchange').set('Cookie', owner).send({ public_token: 'p', item_id: id, add: 'liabilities' });
+  assert.equal(r.status, 200);
+  const item = db.prepare('SELECT * FROM plaid_items WHERE id = ?').get(id);
+  assert.equal(item.liabilities, 'on');
+  assert.equal(item.liabilities_fetched_at, null, 'fetched on the next sync');
+  assert.equal(synced.length, 1);
+  assert.ok(!client.calls.some(c => c[0] === 'exchange'), 'no new item: the token is unchanged');
+  const after = await request(a).get('/connections').set('Cookie', owner);
+  assert.match(after.text, /Statement details on/);
+});

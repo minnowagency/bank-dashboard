@@ -26,6 +26,11 @@
       <td class="note"><%= it.last_synced_at ? fmtDate(it.last_synced_at) : 'never' %></td>
       <td>
         <% if (it.status !== 'ok') { %><button type="button" class="primary js-fix" data-id="<%= it.id %>">Fix</button><% } %>
+        <% if (it.liabilities === 'on') { %>
+          <div class="note">Statement details on<% if (it.liabilities_error) { %> — <span class="owed"><%= it.liabilities_error %></span><% } %></div>
+        <% } else if (it.accounts.some(a => a.kind === 'credit')) { %>
+          <button type="button" class="js-statements" data-id="<%= it.id %>" title="Statement balance, minimum payment and due date for this login's cards. Uses Plaid Liabilities, which Plaid bills separately.">Add statement details</button>
+        <% } %>
         <form method="post" action="/connections/<%= it.id %>/delete" class="inline js-confirm" data-confirm="Remove this connection? Its history stays; it just stops updating."><button>Remove</button></form>
       </td>
     </tr>

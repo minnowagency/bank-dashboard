@@ -143,5 +143,20 @@ CREATE TABLE IF NOT EXISTS plaid_items (
   error TEXT,
   last_synced_at INTEGER,
   account_ids TEXT NOT NULL DEFAULT '[]',   -- Plaid account ids seen for this item
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  liabilities TEXT,                    -- 'on' once the owner consented to statement details (billed by Plaid)
+  liabilities_fetched_at INTEGER,
+  liabilities_error TEXT
+);
+
+CREATE TABLE IF NOT EXISTS card_statements (   -- Plaid Liabilities, one row per credit card
+  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+  statement_balance_cents INTEGER,
+  statement_date INTEGER,              -- Eastern noon of the statement day, like transactions
+  minimum_payment_cents INTEGER,
+  due_date INTEGER,
+  last_payment_cents INTEGER,
+  last_payment_date INTEGER,
+  is_overdue INTEGER,
+  fetched_at INTEGER NOT NULL
 );

@@ -10,6 +10,7 @@ const { postProcess } = require('./sync');
 const { startOfDay } = require('./feed');
 
 const PLAID_INTERVAL_MS = 5 * 60 * 1000;
+const LIABILITIES_REFRESH_SECONDS = 6 * 3600;  // statements change monthly; Plaid refreshes about daily
 const DAY = 86400;
 // SimpleFIN dated card and transfer rows by transaction day (stamped 08:00 ET),
 // Plaid by posting day (noon ET): usually 2 days later, 3–4 across a weekend.
@@ -173,6 +174,38 @@ async function syncItem(db, client, item, appSecret, now) {
   return { added, removed, pages };
 }
 
+// Card statement details (Plaid Liabilities) for an item the owner enabled.
+// A failure is kept on the item for the Connections page; it never fails the sync.
+async function syncLiabilities(db, client, item, appSecret, now) {
+  if (item.liabilities !== 'on') return;
+  if (item.liabilities_fetched_at && now - item.liabilities_fetched_at < LIABILITIES_REFRESH_SECONDS) return;
+  try {
+    const data = (await client.liabilitiesGet({ access_token: accessTokenFor(db, item, appSecret) })).data;
+    const cents = (n) => (n == null ? null : toCents(n));
+    const up = db.prepare(`INSERT INTO card_statements (account_id, statement_balance_cents, statement_date,
+        minimum_payment_cents, due_date, last_payment_cents, last_payment_date, is_overdue, fetched_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(account_id) DO UPDATE SET statement_balance_cents = excluded.statement_balance_cents,
+        statement_date = excluded.statement_date, minimum_payment_cents = excluded.minimum_payment_cents,
+        due_date = excluded.due_date, last_payment_cents = excluded.last_payment_cents,
+        last_payment_date = excluded.last_payment_date, is_overdue = excluded.is_overdue, fetched_at = excluded.fetched_at`);
+    db.transaction(() => {
+      for (const c of (data.liabilities && data.liabilities.credit) || []) {
+        const acct = db.prepare('SELECT id FROM accounts WHERE source_account_id = ?').get(c.account_id);
+        if (!acct) continue;
+        up.run(acct.id, cents(c.last_statement_balance), dayToEpoch(c.last_statement_issue_date),
+          cents(c.minimum_payment_amount), dayToEpoch(c.next_payment_due_date), cents(c.last_payment_amount),
+          dayToEpoch(c.last_payment_date), c.is_overdue == null ? null : (c.is_overdue ? 1 : 0), now);
+      }
+      db.prepare('UPDATE plaid_items SET liabilities_fetched_at = ?, liabilities_error = NULL WHERE id = ?').run(now, item.id);
+    })();
+  } catch (err) {
+    // retry on the normal refresh schedule rather than every 5 minutes
+    db.prepare('UPDATE plaid_items SET liabilities_fetched_at = ?, liabilities_error = ? WHERE id = ?')
+      .run(now, plaidErrorText(err), item.id);
+  }
+}
+
 // Polls every configured item. One item failing never stops the others; its
 // error is stored on the item and surfaced in the owner's banner.
 async function plaidSync(db, { client, appSecret, aiCategorizeFn = null, log = () => {},
@@ -187,6 +220,7 @@ async function plaidSync(db, { client, appSecret, aiCategorizeFn = null, log = (
     try {
       const r = await syncItem(db, client, item, appSecret, now);
       out.added += r.added; out.removed += r.removed;
+      await syncLiabilities(db, client, item, appSecret, now());
     } catch (err) {
       const text = plaidErrorText(err);
       db.prepare(`UPDATE plaid_items SET status = 'error', error = ? WHERE id = ?`).run(text, item.id);

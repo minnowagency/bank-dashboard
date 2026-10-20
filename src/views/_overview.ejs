@@ -68,7 +68,17 @@
          href="<%= qs({ account: filters.account === a.id ? null : a.id }) %>">
         <div class="n"><%= a.display_name || a.name %><% if (a.visibility === 'private') { %> 🔒<% } %></div>
         <div class="a owed"><%= fmtUSD(-a.balance_cents) %></div>
-        <div class="m">owed</div>
+        <div class="m">owed<% if (a.mask) { %> · ending <%= a.mask %><% } %></div>
+        <% if (a.statement) { const s = a.statement; const md = (t) => new Date(t * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }); %>
+          <div class="stmt">
+            <% if (s.statement_balance_cents != null) { %><div>Statement <%= fmtUSD(s.statement_balance_cents) %></div><% } %>
+            <% if (s.paid) { %>
+              <div class="due paid">Paid <%= fmtUSD(s.last_payment_cents) %> <%= md(s.last_payment_date) %></div>
+            <% } else if (s.minimum_payment_cents != null) { %>
+              <div class="due<%= s.overdue ? ' overdue' : (s.dueSoon ? ' soon' : '') %>">Min <%= fmtUSD(s.minimum_payment_cents) %><% if (s.due_date) { %> · <%= s.overdue ? 'overdue' : 'due' %> <%= md(s.due_date) %><% } %></div>
+            <% } %>
+          </div>
+        <% } %>
       </a>
     <% }) %>
   </div>

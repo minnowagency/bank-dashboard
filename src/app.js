@@ -278,6 +278,21 @@ function registerRoutes(app, db, plaid) {
     res.render('review', { title: 'Review', rows, categories, reviewCount: rows.length, active: 'review' });
   });
 
+  // Plaid Liabilities data for the card tiles: what's due, by when, and
+  // whether a payment has landed since the statement closed.
+  function withStatements(db, cards, now) {
+    const get = db.prepare('SELECT * FROM card_statements WHERE account_id = ?');
+    return cards.map(a => {
+      const s = get.get(a.id);
+      if (!s) return a;
+      const paid = Boolean(s.last_payment_date && s.statement_date && s.last_payment_date >= s.statement_date && s.last_payment_cents > 0);
+      const owing = !paid && (s.minimum_payment_cents || 0) > 0;
+      return { ...a, statement: { ...s, paid,
+        overdue: Boolean(s.is_overdue) && !paid,
+        dueSoon: owing && s.due_date != null && s.due_date - now <= 5 * 86400 } };
+    });
+  }
+
   app.get('/', (req, res) => {
     const now = Math.floor(Date.now() / 1000);
     const { rows, accounts, categories, members, period } = feedQuery(db, req.user, req.query, { now });
@@ -288,7 +303,7 @@ function registerRoutes(app, db, plaid) {
       groups: groupByDay(rows, now),
       summary: periodSummary(db, req.user, req.query, now),
       banks: accounts.filter(a => a.kind === 'bank'),
-      credits: accounts.filter(a => a.kind === 'credit'),
+      credits: withStatements(db, accounts.filter(a => a.kind === 'credit'), now),
       totals: totals(db, req.user),
       filters: req.query,
       reviewCount: reviewCount(db, req.user),
@@ -588,7 +603,7 @@ function registerRoutes(app, db, plaid) {
   function accountsForItem(db, item) {
     const ids = JSON.parse(item.account_ids || '[]');
     if (ids.length === 0) return [];
-    return db.prepare(`SELECT display_name, name FROM accounts WHERE source_account_id IN (${ids.map(() => '?').join(',')})`).all(...ids);
+    return db.prepare(`SELECT display_name, name, kind FROM accounts WHERE source_account_id IN (${ids.map(() => '?').join(',')})`).all(...ids);
   }
 
   app.post('/connections/link-token', async (req, res) => {
@@ -601,6 +616,8 @@ function registerRoutes(app, db, plaid) {
         const item = db.prepare('SELECT * FROM plaid_items WHERE id = ?').get(itemId);
         if (!item) return res.status(404).json({ error: 'Unknown connection' });
         body.access_token = accessTokenFor(db, item, plaid.appSecret); // update mode: re-authenticate
+        // ...or consent to statement details (Plaid Liabilities) on this login
+        if (req.body.add === 'liabilities') body.additional_consented_products = ['liabilities'];
       } else {
         body.products = ['transactions'];
         body.transactions = { days_requested: 730 };
@@ -621,6 +638,10 @@ function registerRoutes(app, db, plaid) {
       if (existing) {
         // update mode: the item keeps its token; just clear the error
         db.prepare("UPDATE plaid_items SET status = 'ok', error = NULL WHERE id = ?").run(existing.id);
+        if (req.body.add === 'liabilities') {
+          db.prepare(`UPDATE plaid_items SET liabilities = 'on', liabilities_fetched_at = NULL, liabilities_error = NULL
+            WHERE id = ?`).run(existing.id);
+        }
       } else {
         const r = await plaid.client.itemPublicTokenExchange({ public_token: publicToken });
         addItem(db, { itemId: r.data.item_id, accessToken: r.data.access_token,

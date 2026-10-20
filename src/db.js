@@ -28,6 +28,10 @@ function migrate(db, schemaSql) {
   if (!ucols.includes('totp_last_step')) db.exec('ALTER TABLE users ADD COLUMN totp_last_step INTEGER');
   const scols = db.prepare('PRAGMA table_info(sessions)').all().map(c => c.name);
   if (!scols.includes('last_seen_at')) db.exec('ALTER TABLE sessions ADD COLUMN last_seen_at INTEGER');
+  const pcols = db.prepare('PRAGMA table_info(plaid_items)').all().map(c => c.name);
+  if (!pcols.includes('liabilities')) db.exec('ALTER TABLE plaid_items ADD COLUMN liabilities TEXT');
+  if (!pcols.includes('liabilities_fetched_at')) db.exec('ALTER TABLE plaid_items ADD COLUMN liabilities_fetched_at INTEGER');
+  if (!pcols.includes('liabilities_error')) db.exec('ALTER TABLE plaid_items ADD COLUMN liabilities_error TEXT');
   dropPlaintextSessions(db);
   rebuildTransactionsIfStale(db, schemaSql);
   repairIntercompanyTransfers(db);
