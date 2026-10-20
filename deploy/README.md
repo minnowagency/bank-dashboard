@@ -145,3 +145,10 @@ single-use recovery codes. If the phone is lost and no recovery codes remain:
 cd /opt/bank-dashboard && sudo -u bankdash node bin/reset-2fa.js <username>
 ```
 The user then signs in with their password and enrolls again.
+
+## 11. Updates and pre-deploy snapshots
+```bash
+cp deploy/52bank-auto-reboot /etc/apt/apt.conf.d/      # reboot at 09:30 UTC only when an update requires it
+cp deploy/predeploy-backup.sh /usr/local/sbin/bank-predeploy-backup && chmod 700 /usr/local/sbin/bank-predeploy-backup
+```
+Before any deploy or data repair: `bank-predeploy-backup <label>` (encrypted, in `/root/predeploy/`).

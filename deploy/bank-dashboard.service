@@ -16,6 +16,8 @@ ProtectSystem=strict
 ReadWritePaths=/opt/bank-dashboard/data
 ProtectHome=true
 PrivateTmp=true
+# database, WAL and journal files are created owner-only
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target

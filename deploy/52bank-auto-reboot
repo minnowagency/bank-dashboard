@@ -1,0 +1,7 @@
+// Installed as /etc/apt/apt.conf.d/52bank-auto-reboot.
+// Security updates already install nightly; reboot only when one requires it
+// (kernel, libc), at 09:30 UTC = 04:30/05:30 Eastern. bank-dashboard and
+// tailscaled are enabled units and come back on their own.
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
+Unattended-Upgrade::Automatic-Reboot-Time "09:30";
