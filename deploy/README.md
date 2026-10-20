@@ -117,7 +117,7 @@ Then, logged in as the owner, open **Connections** and click **Link a login** fo
 bank login. The app polls Plaid every 5 minutes; SimpleFIN stops the moment the first
 connection exists (its code and URL stay as a fallback).
 
-`APP_SECRET` encrypts the per-login access tokens stored in the database. Keep a copy
+`APP_SECRET` encrypts the per-login access tokens and every user's two-factor secret stored in the database. Keep a copy
 alongside the backup passphrase: a restored database is useless for syncing without it.
 
 ## 8. Link the rest of the connections
@@ -137,3 +137,11 @@ bank/credit-card type guesses.
 - [ ] Break a connection's password at the bank (or wait for one to need re-auth) is NOT
       required — just confirm the staleness banner text renders when `sync_errors` is
       non-empty after any real connection hiccup.
+
+## 10. Two-factor sign-in
+Every user must set up an authenticator app at first sign-in (Security page) and gets 10
+single-use recovery codes. If the phone is lost and no recovery codes remain:
+```bash
+cd /opt/bank-dashboard && sudo -u bankdash node bin/reset-2fa.js <username>
+```
+The user then signs in with their password and enrolls again.
