@@ -11,7 +11,12 @@ const { startOfDay } = require('./feed');
 
 const PLAID_INTERVAL_MS = 5 * 60 * 1000;
 const DAY = 86400;
-const OVERLAP_MATCH_SECONDS = 2 * DAY;
+// SimpleFIN dated card and transfer rows by transaction day (stamped 08:00 ET),
+// Plaid by posting day (noon ET): usually 2 days later, 3–4 across a weekend.
+const OVERLAP_MATCH_SECONDS = 5 * DAY;
+// Same-payee test for choosing between same-amount candidates: the first 12
+// letters/digits of the description ("CASHAPPNADIA" vs "CASHAPPJOSHU").
+const payeeKey = (d) => String(d || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
 
 function makeClient(config) {
   const { Configuration, PlaidApi, PlaidEnvironments } = require('plaid');
@@ -72,7 +77,10 @@ function upsertAccount(db, a, now) {
   return id;
 }
 
-function applyTransaction(db, t, accountIds, now) {
+// samePayeeOnly: adopt an older row only when the payee matches; returns false
+// (nothing written) if that left the transaction unplaced, so a second pass can
+// match it by date alone once every same-payee pair in the page is taken.
+function applyTransaction(db, t, accountIds, now, { samePayeeOnly = false } = {}) {
   const accountId = accountIds.get(t.account_id);
   if (!accountId) return; // account not returned by accountsGet; skip rather than guess
   const amountCents = -toCents(t.amount);
@@ -98,9 +106,15 @@ function applyTransaction(db, t, accountIds, now) {
     }
   }
   // overlap with history from the previous provider: adopt the existing row
-  const twin = db.prepare(`SELECT uid FROM transactions WHERE plaid_txn_id IS NULL AND account_id = ?
-    AND amount_cents = ? AND ABS(posted_at - ?) <= ? ORDER BY ABS(posted_at - ?) LIMIT 1`)
-    .get(accountId, amountCents, postedAt, OVERLAP_MATCH_SECONDS, postedAt);
+  const candidates = db.prepare(`SELECT uid, description, posted_at FROM transactions WHERE plaid_txn_id IS NULL
+    AND account_id = ? AND amount_cents = ? AND ABS(posted_at - ?) <= ?`)
+    .all(accountId, amountCents, postedAt, OVERLAP_MATCH_SECONDS);
+  const key = payeeKey(description);
+  const eligible = samePayeeOnly ? candidates.filter(c => payeeKey(c.description) === key) : candidates;
+  if (samePayeeOnly && eligible.length === 0 && candidates.length > 0) return false;
+  const twin = eligible.sort((a, b) =>
+    (payeeKey(b.description) === key) - (payeeKey(a.description) === key)
+    || Math.abs(a.posted_at - postedAt) - Math.abs(b.posted_at - postedAt))[0];
   if (twin) {
     db.prepare('UPDATE transactions SET plaid_txn_id = ?, pending = ? WHERE uid = ?').run(t.transaction_id, pending, twin.uid);
     return;
@@ -142,7 +156,10 @@ async function syncItem(db, client, item, appSecret, now) {
     const page = (await client.transactionsSync(req)).data;
     pages++;
     db.transaction(() => {
-      for (const t of [...(page.added || []), ...(page.modified || [])]) { applyTransaction(db, t, accountIds, now()); added++; }
+      const txns = [...(page.added || []), ...(page.modified || [])];
+      const deferred = txns.filter(t => applyTransaction(db, t, accountIds, now(), { samePayeeOnly: true }) === false);
+      for (const t of deferred) applyTransaction(db, t, accountIds, now());
+      added += txns.length;
       for (const r of page.removed || []) {
         removed += db.prepare('DELETE FROM transactions WHERE plaid_txn_id = ?').run(r.transaction_id).changes;
       }
@@ -187,4 +204,71 @@ async function plaidSync(db, { client, appSecret, aiCategorizeFn = null, log = (
   return { ...out, ...post };
 }
 
-module.exports = { PLAID_INTERVAL_MS, makeClient, addItem, accessTokenFor, plaidSync, dayToEpoch, friendlyItemError };
+// One-time repair for overlap rows the old 48-hour window missed: Plaid
+// inserted a second copy of a transaction SimpleFIN had already stored. The
+// older row is kept (its annotations and SimpleFIN description, which carries
+// wire sender digits); it takes over the Plaid id, and the Plaid copy's
+// category and transfer pairing when it has none of its own. SimpleFIN pending
+// rows inside Plaid's coverage never post now and are dropped unless annotated.
+function repairOverlapDuplicates(db, { apply = false } = {}) {
+  const report = { merged: [], stalePending: [], unmatched: [] };
+  const accounts = db.prepare("SELECT id FROM accounts WHERE source = 'plaid'").all();
+  const run = () => {
+    for (const { id } of accounts) {
+      const start = db.prepare("SELECT MIN(posted_at) AS t FROM transactions WHERE account_id = ? AND uid LIKE '%|p:%'").get(id).t;
+      if (start == null) continue;
+      const olds = db.prepare(`SELECT * FROM transactions WHERE account_id = ? AND plaid_txn_id IS NULL AND posted_at >= ?
+        ORDER BY posted_at`).all(id, start - OVERLAP_MATCH_SECONDS).map(r => ({ ...r }));
+      const taken = new Set();
+      const copiesFor = (o) => db.prepare(`SELECT * FROM transactions WHERE account_id = ? AND uid LIKE '%|p:%'
+        AND amount_cents = ? AND ABS(posted_at - ?) <= ?`).all(id, o.amount_cents, o.posted_at, OVERLAP_MATCH_SECONDS)
+        .map(r => ({ ...r })).filter(c => !taken.has(c.uid));
+      const pick = (o, samePayeeOnly) => {
+        const key = payeeKey(o.description);
+        const list = copiesFor(o).filter(c => !samePayeeOnly || payeeKey(c.description) === key);
+        return list.sort((a, b) => (payeeKey(b.description) === key) - (payeeKey(a.description) === key)
+          || Math.abs(a.posted_at - o.posted_at) - Math.abs(b.posted_at - o.posted_at))[0];
+      };
+      const pairs = [];
+      const rest = [];
+      for (const o of olds.filter(r => !r.pending)) {
+        const c = pick(o, true);
+        if (c) { taken.add(c.uid); pairs.push([o, c]); } else rest.push(o);
+      }
+      for (const o of rest) {
+        const c = pick(o, false);
+        if (c) { taken.add(c.uid); pairs.push([o, c]); } else report.unmatched.push(o);
+      }
+      for (const o of olds.filter(r => r.pending)) {
+        if (o.note || o.category_source === 'manual') report.unmatched.push(o);
+        else report.stalePending.push(o);
+      }
+      for (const [o, c] of pairs) {
+        report.merged.push({ keep: o, drop: c });
+        if (!apply) continue;
+        const takeCategory = o.category_id == null && o.suggested_category_id == null;
+        db.prepare('DELETE FROM transactions WHERE uid = ?').run(c.uid);   // first: plaid_txn_id is unique
+        db.prepare(`UPDATE transactions SET plaid_txn_id = ?, pending = ?,
+            category_id = ?, category_source = ?, categorized_by = ?, rule_id = ?,
+            suggested_category_id = ?, ai_confidence = ?, ai_reason = ?, transfer_pair_uid = ?
+          WHERE uid = ?`).run(c.plaid_txn_id, c.pending,
+          takeCategory ? c.category_id : o.category_id, takeCategory ? c.category_source : o.category_source,
+          takeCategory ? c.categorized_by : o.categorized_by, takeCategory ? c.rule_id : o.rule_id,
+          takeCategory ? c.suggested_category_id : o.suggested_category_id,
+          takeCategory ? c.ai_confidence : o.ai_confidence, takeCategory ? c.ai_reason : o.ai_reason,
+          o.transfer_pair_uid || c.transfer_pair_uid, o.uid);
+        db.prepare('UPDATE transactions SET transfer_pair_uid = ? WHERE transfer_pair_uid = ?').run(o.uid, c.uid);
+      }
+    }
+    if (apply) {
+      for (const p of report.stalePending) db.prepare('DELETE FROM transactions WHERE uid = ?').run(p.uid);
+      // a pair partner that no longer exists leaves nothing to pair with
+      db.exec(`UPDATE transactions SET transfer_pair_uid = NULL WHERE transfer_pair_uid IS NOT NULL
+        AND transfer_pair_uid NOT IN (SELECT uid FROM transactions)`);
+    }
+  };
+  if (apply) db.transaction(run)(); else run();
+  return report;
+}
+
+module.exports = { PLAID_INTERVAL_MS, makeClient, repairOverlapDuplicates, addItem, accessTokenFor, plaidSync, dayToEpoch, friendlyItemError };

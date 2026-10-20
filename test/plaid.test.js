@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { openDb } = require('../src/db');
 const { encrypt, decrypt } = require('../src/crypto');
-const { plaidSync, addItem, PLAID_INTERVAL_MS } = require('../src/plaid');
+const { plaidSync, addItem, PLAID_INTERVAL_MS, repairOverlapDuplicates } = require('../src/plaid');
 
 const KEY = 'a'.repeat(64); // 32 bytes hex
 const et = (s) => Math.floor(new Date(s).getTime() / 1000);
@@ -189,4 +189,81 @@ test('plaidSync with no items is a no-op and the poll interval is five minutes',
   assert.equal(r.ok, true);
   assert.equal(r.items, 0);
   assert.equal(PLAID_INTERVAL_MS, 5 * 60 * 1000);
+});
+
+test('overlap: SimpleFIN rows dated 2–3 days before Plaid posting (8am vs noon, across a weekend) are adopted, not duplicated', async () => {
+  const db = openDb(':memory:');
+  db.prepare(`INSERT INTO accounts (id, name, kind, visibility, hidden, balance_cents, last_synced_at)
+    VALUES ('ACT-old-8743', 'BHCC LLC 8743 (8743)', 'bank', 'company', 0, 100, ?)`).run(NOW);
+  const old = db.prepare(`INSERT INTO transactions (uid, sf_id, account_id, posted_at, amount_cents, description, first_seen_at)
+    VALUES (?, ?, 'ACT-old-8743', ?, ?, ?, ?)`);
+  // SimpleFIN stamped these at 08:00 Eastern on the transaction date
+  old.run('ACT-old-8743|sf-hyg', 'sf-hyg', et('2026-07-17T08:00:00-04:00'), -29500, 'HYGINIX858-566-6212 CA US', NOW);
+  old.run('ACT-old-8743|sf-ccp', 'sf-ccp', et('2026-09-05T08:00:00-04:00'), -1000000, 'Credit card payment', NOW);  // Friday
+  old.run('ACT-old-8743|sf-nad', 'sf-nad', et('2026-09-20T08:00:00-04:00'), -51500, 'CASH APP*NADIA SOTGIUOakland CA US', NOW);
+  const client = itemWithScript(db, async () => ({
+    added: [
+      tx('p-hyg', 'pa-chk', 295, '2026-07-19', { name: 'HYGINIX858-566-6212' }),            // 2 days later
+      tx('p-ccp', 'pa-chk', 10000, '2026-09-08', { name: 'MOBILE TO ****7263 - TRUIST' }),    // the Monday after
+      tx('p-jos', 'pa-chk', 515, '2026-09-17', { name: 'CASH APP*JOSHUA COATESOakland' }),    // different payee, same amount, in window
+      tx('p-nad', 'pa-chk', 515, '2026-09-21', { name: 'CASH APP*NADIA SOTGIUOakland' }),
+      tx('p-new', 'pa-chk', 295, '2026-08-16', { name: 'HYGINIX858-566-6212' }),              // genuinely new: no SimpleFIN row
+    ],
+    modified: [], removed: [], next_cursor: 'c1', has_more: false,
+  }));
+  assert.equal((await plaidSync(db, { client, appSecret: KEY, now: () => NOW })).ok, true);
+  const ids = (uid) => db.prepare('SELECT plaid_txn_id FROM transactions WHERE uid = ?').get(uid).plaid_txn_id;
+  assert.equal(ids('ACT-old-8743|sf-hyg'), 'p-hyg');
+  assert.equal(ids('ACT-old-8743|sf-ccp'), 'p-ccp');
+  assert.equal(ids('ACT-old-8743|sf-nad'), 'p-nad', 'the matching payee wins over a nearer same-amount payment');
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM transactions').get().n, 5, '3 adopted + JOSHUA + the new HYGINIX');
+});
+
+test('repairOverlapDuplicates: dry run changes nothing; apply merges copies into the older rows', () => {
+  const db = openDb(':memory:');
+  const transfers = db.prepare("SELECT id FROM categories WHERE name='Transfers'").get().id;
+  const supplies = db.prepare("SELECT id FROM categories WHERE name='Supplies'").get().id;
+  db.prepare(`INSERT INTO accounts (id, name, kind, visibility, hidden, balance_cents, last_synced_at, source) VALUES
+    ('B', 'BHCC 8743', 'bank', 'company', 0, 0, ?, 'plaid'), ('C', 'BHCC CC 7263', 'credit', 'company', 0, 0, ?, 'plaid')`).run(NOW, NOW);
+  const ins = db.prepare(`INSERT INTO transactions (uid, sf_id, account_id, posted_at, amount_cents, description, pending,
+    plaid_txn_id, category_id, category_source, note, transfer_pair_uid, first_seen_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  const d8 = (day) => et(`${day}T08:00:00-04:00`);
+  const d12 = (day) => et(`${day}T12:00:00-04:00`);
+  // earliest Plaid-inserted row defines coverage
+  ins.run('B|p:early', 'p:early', 'B', d12('2026-06-01'), -100, 'EARLY', 0, 'early', null, null, null, null, NOW);
+  // old card payment (annotated) and its Plaid copy, which Plaid paired with the card side
+  ins.run('B|sf1', 'sf1', 'B', d8('2026-09-05'), -1000000, 'Credit card payment', 0, null, null, null, 'monthly paydown', null, NOW);
+  ins.run('B|p:ccp', 'p:ccp', 'B', d12('2026-09-08'), -1000000, 'MOBILE TO ****7263 - TRUIST', 0, 'ccp', transfers, 'transfer', null, 'C|p:pay', NOW);
+  ins.run('C|p:pay', 'p:pay', 'C', d12('2026-09-08'), 1000000, 'PAYMENT THANK YOU', 0, 'pay', transfers, 'transfer', null, 'B|p:ccp', NOW);
+  // two same-amount Cash App payments: the old NADIA row must merge with the NADIA copy
+  ins.run('B|sf2', 'sf2', 'B', d8('2026-09-20'), -51500, 'CASH APP*NADIA SOTGIUOakland CA US', 0, null, supplies, 'manual', null, null, NOW);
+  ins.run('B|p:jos', 'p:jos', 'B', d12('2026-09-17'), -51500, 'CASH APP*JOSHUA COATESOakland', 0, 'jos', null, null, null, null, NOW);
+  ins.run('B|p:nad', 'p:nad', 'B', d12('2026-09-21'), -51500, 'CASH APP*NADIA SOTGIUOakland', 0, 'nad', null, null, null, null, NOW);
+  // stale SimpleFIN pending row, and an old row with no Plaid copy at all
+  ins.run('B|sf3', 'sf3', 'B', d8('2026-10-02'), -100, 'GOOGLE *CHROME TEMP', 1, null, null, null, null, null, NOW);
+  ins.run('B|sf4', 'sf4', 'B', d8('2026-09-01'), -4242, 'ONLY IN SIMPLEFIN', 0, null, null, null, null, null, NOW);
+
+  const count = () => db.prepare('SELECT COUNT(*) AS n FROM transactions').get().n;
+  const dry = repairOverlapDuplicates(db);
+  assert.equal(count(), 9, 'dry run writes nothing');
+  assert.deepEqual(dry.merged.map(m => [m.keep.uid, m.drop.uid]).sort(), [['B|sf1', 'B|p:ccp'], ['B|sf2', 'B|p:nad']]);
+  assert.deepEqual(dry.stalePending.map(r => r.uid), ['B|sf3']);
+  assert.deepEqual(dry.unmatched.map(r => r.uid), ['B|sf4']);
+
+  repairOverlapDuplicates(db, { apply: true });
+  assert.equal(count(), 6);
+  const row = (uid) => ({ ...db.prepare('SELECT * FROM transactions WHERE uid = ?').get(uid) });
+  const kept = row('B|sf1');
+  assert.equal(kept.plaid_txn_id, 'ccp');
+  assert.equal(kept.note, 'monthly paydown');
+  assert.equal(kept.category_source, 'transfer', 'uncategorized old row takes the copy\'s category');
+  assert.equal(kept.transfer_pair_uid, 'C|p:pay');
+  assert.equal(row('C|p:pay').transfer_pair_uid, 'B|sf1', 'the card side now points at the kept row');
+  const nad = row('B|sf2');
+  assert.equal(nad.plaid_txn_id, 'nad');
+  assert.equal(nad.category_source, 'manual', 'a manual category is never replaced');
+  assert.equal(row('B|p:jos').plaid_txn_id, 'jos', 'the other payee is untouched');
+  assert.equal(db.prepare("SELECT 1 FROM transactions WHERE uid IN ('B|p:ccp','B|p:nad','B|sf3')").get(), undefined);
+  assert.equal(row('B|sf4').uid, 'B|sf4', 'unmatched rows are reported, never deleted');
+  assert.equal(repairOverlapDuplicates(db, { apply: true }).merged.length, 0, 'idempotent');
 });
