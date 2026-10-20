@@ -6,6 +6,7 @@ const { createUser } = require('../src/auth');
 const { createApp } = require('../src/app');
 const { decrypt } = require('../src/crypto');
 const { addItem } = require('../src/plaid');
+const { enrollTotp, registerApp, login } = require('./helpers');
 
 const KEY = 'c'.repeat(64);
 
@@ -26,12 +27,10 @@ function app(plaidOpts) {
   createUser(db, 'asst', 'memberpass1', 'member');
   const client = fakePlaid();
   const synced = [];
-  const a = createApp(db, { plaid: { client, appSecret: KEY, syncNow: async () => { synced.push(1); }, ...(plaidOpts || {}) } });
+  enrollTotp(db, 'michael', KEY);
+  enrollTotp(db, 'asst', KEY);
+  const a = registerApp(createApp(db, { plaid: { client, appSecret: KEY, syncNow: async () => { synced.push(1); }, ...(plaidOpts || {}) } }), db);
   return { app: a, db, client, synced };
-}
-async function login(a, u, p) {
-  const res = await request(a).post('/login').type('form').send({ username: u, password: p });
-  return res.headers['set-cookie'][0].split(';')[0];
 }
 
 test('connections page and its actions are owner-only', async () => {
@@ -100,7 +99,8 @@ test('the page lists items with their accounts and status; delete removes the it
 test('without Plaid configured the page explains what is missing instead of failing', async () => {
   const db = openDb(':memory:');
   createUser(db, 'michael', 'ownerpass1', 'owner');
-  const a = createApp(db, {});
+  enrollTotp(db, 'michael', KEY);
+  const a = registerApp(createApp(db, { appSecret: KEY }), db);
   const owner = await login(a, 'michael', 'ownerpass1');
   const page = await request(a).get('/connections').set('Cookie', owner);
   assert.equal(page.status, 200);

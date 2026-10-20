@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verification code — Bank Dashboard</title><link rel="stylesheet" href="/static/style.css"></head>
+<body class="login-page">
+  <form method="post" action="/login/2fa" class="login-box">
+    <h1>Bank Dashboard</h1>
+    <% if (error) { %><p class="error"><%= error %></p><% } %>
+    <label>Code from your authenticator app
+      <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="16" required autofocus></label>
+    <p class="note">Lost your phone? Enter one of your recovery codes instead.</p>
+    <button type="submit">Verify</button>
+    <p class="note"><a href="/login">Start over</a></p>
+  </form>
+</body></html>

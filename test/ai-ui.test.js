@@ -66,7 +66,7 @@ test('AI-categorized rows show an AI badge with the reason; suggestions are pres
   db.prepare(`UPDATE transactions SET suggested_category_id=?, ai_confidence='low',
     ai_reason='Utility-looking payee' WHERE uid='CHK|2'`).run(utilities);
 
-  const dash = await request(app).get('/').set('Cookie', owner);
+  const dash = await request(app).get('/?period=all').set('Cookie', owner);
   assert.match(dash.text, /class="ai-badge"[^>]*title="Amazon marketplace purchase"/);
 
   const review = await request(app).get('/review').set('Cookie', owner);

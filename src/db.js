@@ -23,9 +23,25 @@ function migrate(db, schemaSql) {
   if (!cols.includes('source')) db.exec("ALTER TABLE accounts ADD COLUMN source TEXT NOT NULL DEFAULT 'simplefin'");
   if (!cols.includes('source_account_id')) db.exec('ALTER TABLE accounts ADD COLUMN source_account_id TEXT');
   if (!cols.includes('mask')) db.exec('ALTER TABLE accounts ADD COLUMN mask TEXT');
+  const ucols = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
+  for (const c of ['totp_secret_enc', 'totp_pending_enc']) if (!ucols.includes(c)) db.exec(`ALTER TABLE users ADD COLUMN ${c} TEXT`);
+  if (!ucols.includes('totp_last_step')) db.exec('ALTER TABLE users ADD COLUMN totp_last_step INTEGER');
+  const scols = db.prepare('PRAGMA table_info(sessions)').all().map(c => c.name);
+  if (!scols.includes('last_seen_at')) db.exec('ALTER TABLE sessions ADD COLUMN last_seen_at INTEGER');
+  dropPlaintextSessions(db);
   rebuildTransactionsIfStale(db, schemaSql);
   repairIntercompanyTransfers(db);
   rebuildSendersIfStale(db, schemaSql);
+}
+
+// Session rows used to hold the cookie value itself; they now hold its hash.
+// Old rows can't be hashed into anything a browser holds, so they go once and
+// everyone signs in again.
+function dropPlaintextSessions(db) {
+  const KEY = 'migration:hashed-sessions';
+  if (db.prepare('SELECT 1 FROM settings WHERE key = ?').get(KEY)) return;
+  db.exec('DELETE FROM sessions');
+  db.prepare("INSERT INTO settings (key, value) VALUES (?, '1')").run(KEY);
 }
 
 // The first senders table was keyed by sending account only; labels now

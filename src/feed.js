@@ -133,7 +133,7 @@ function feedQuery(db, user, filters = {}, { limit = 500, now = Math.floor(Date.
   const period = resolvePeriod(filters, now);
   const accounts = visibleAccounts(db, user);
   const categories = db.prepare('SELECT * FROM categories ORDER BY name').all();
-  if (accounts.length === 0) return { rows: [], accounts, categories, members: [] };
+  if (accounts.length === 0) return { rows: [], accounts, categories, members: [], period };
 
   const ids = accounts.map(a => a.id);
   const ph = ids.map(() => '?').join(',');

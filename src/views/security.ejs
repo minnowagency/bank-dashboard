@@ -1,0 +1,33 @@
+<%- include('_header', { title, active }) %>
+<h1>Security</h1>
+<% if (error) { %><div class="banner"><strong><%= error %></strong></div><% } %>
+
+<% if (recoveryCodes) { %>
+  <div class="banner">
+    <strong>Save these recovery codes now — they won't be shown again.</strong>
+    Each works once, in place of an authenticator code, if you lose your phone. Store them in your password manager.
+  </div>
+  <pre class="recovery-codes"><%= recoveryCodes.join('\n') %></pre>
+  <p><a class="primary" href="/">I've saved them — continue</a></p>
+<% } else if (enrolled) { %>
+  <% if (usedRecovery) { %><div class="banner"><strong>You signed in with a recovery code.</strong> It can't be used again. If your phone is gone, ask Claude to reset two-factor on the server so you can enroll a new one.</div><% } %>
+  <p>Two-factor sign-in is <strong>on</strong>. You have <strong><%= unusedCodes %></strong> unused recovery code<%= unusedCodes === 1 ? '' : 's' %>.</p>
+  <form method="post" action="/account/security/recovery-codes" class="login-box" style="margin:0">
+    <label>Current code from your app <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="16" required></label>
+    <button type="submit">Generate new recovery codes</button>
+    <p class="note">Replaces all existing recovery codes.</p>
+  </form>
+<% } else if (typeof qr !== 'undefined') { %>
+  <p>Two-factor sign-in is required. Set it up once:</p>
+  <ol>
+    <li>Open your authenticator app (1Password, Google Authenticator, Authy, …) and add an account by scanning this code.</li>
+    <li>Enter the 6-digit code it shows.</li>
+  </ol>
+  <div class="qr"><%- qr %></div>
+  <p class="note">Can't scan? Enter this key manually (time-based): <code class="secret"><%= secret %></code></p>
+  <form method="post" action="/account/security/enable" class="login-box" style="margin:0">
+    <label>6-digit code <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required autofocus></label>
+    <button type="submit" class="primary">Turn on two-factor</button>
+  </form>
+<% } %>
+<%- include('_footer') %>

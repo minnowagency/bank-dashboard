@@ -31,8 +31,8 @@ test('visibleAccounts: owner sees all, member sees only company', () => {
 
 test('feedQuery hides private rows and private-only card members from member', () => {
   const db = fixture();
-  const owner = feedQuery(db, OWNER, {});
-  const member = feedQuery(db, MEMBER, {});
+  const owner = feedQuery(db, OWNER, { period: 'all' });
+  const member = feedQuery(db, MEMBER, { period: 'all' });
   assert.equal(owner.rows.length, 4);
   assert.equal(member.rows.length, 3);
   assert.ok(!member.rows.some(r => r.uid === 'PER|4'));
@@ -41,54 +41,54 @@ test('feedQuery hides private rows and private-only card members from member', (
 
 test('filters: search, account, amount range, date range, uncategorized', () => {
   const db = fixture();
-  assert.deepEqual(feedQuery(db, OWNER, { q: 'ups' }).rows.map(r => r.uid), ['CHK|1']);
-  assert.deepEqual(feedQuery(db, OWNER, { account: 'AMX' }).rows.map(r => r.uid), ['AMX|3']);
-  assert.deepEqual(feedQuery(db, OWNER, { min: '1000' }).rows.map(r => r.uid), ['CHK|1', 'CHK|2']);
-  assert.equal(feedQuery(db, OWNER, { from: '2099-01-01' }).rows.length, 0);
-  assert.equal(feedQuery(db, OWNER, { uncategorized: '1' }).rows.length, 4);
-  assert.equal(feedQuery(db, OWNER, { member: 'JANE DOE' }).rows.length, 1);
+  assert.deepEqual(feedQuery(db, OWNER, { period: 'all',  q: 'ups' }).rows.map(r => r.uid), ['CHK|1']);
+  assert.deepEqual(feedQuery(db, OWNER, { period: 'all',  account: 'AMX' }).rows.map(r => r.uid), ['AMX|3']);
+  assert.deepEqual(feedQuery(db, OWNER, { period: 'all',  min: '1000' }).rows.map(r => r.uid), ['CHK|1', 'CHK|2']);
+  assert.equal(feedQuery(db, OWNER, { period: 'all',  from: '2099-01-01' }).rows.length, 0);
+  assert.equal(feedQuery(db, OWNER, { period: 'all',  uncategorized: '1' }).rows.length, 4);
+  assert.equal(feedQuery(db, OWNER, { period: 'all',  member: 'JANE DOE' }).rows.length, 1);
 });
 
 test('garbage filter values are ignored, not thrown', () => {
   const db = fixture();
-  assert.equal(feedQuery(db, OWNER, { min: 'abc', from: 'not-a-date' }).rows.length, 4);
+  assert.equal(feedQuery(db, OWNER, { period: 'all',  min: 'abc', from: 'not-a-date' }).rows.length, 4);
 });
 
 test('to filter with epoch-day 0 (1970-01-01) applies correctly', () => {
   const db = fixture();
-  assert.equal(feedQuery(db, OWNER, { to: '1970-01-01' }).rows.length, 0);
+  assert.equal(feedQuery(db, OWNER, { period: 'all',  to: '1970-01-01' }).rows.length, 0);
 });
 
 test('max filter with $0 applies correctly', () => {
   const db = fixture();
-  assert.equal(feedQuery(db, OWNER, { max: '0' }).rows.length, 0);
+  assert.equal(feedQuery(db, OWNER, { period: 'all',  max: '0' }).rows.length, 0);
 });
 
 test('form-shaped empty-string filters do not blank the feed', () => {
   const db = fixture();
-  const blank = feedQuery(db, OWNER, {
+  const blank = feedQuery(db, OWNER, { period: 'all', 
     q: 'ups', from: '', to: '', min: '', max: '', account: '', category: '',
   }).rows.map(r => r.uid);
-  const bare = feedQuery(db, OWNER, { q: 'ups' }).rows.map(r => r.uid);
+  const bare = feedQuery(db, OWNER, { period: 'all',  q: 'ups' }).rows.map(r => r.uid);
   assert.deepEqual(blank, bare);
   assert.deepEqual(blank, ['CHK|1']);
 });
 
 test('repeated query params (arrays) do not throw', () => {
   const db = fixture();
-  assert.doesNotThrow(() => feedQuery(db, OWNER, { q: ['a', 'b'] }));
+  assert.doesNotThrow(() => feedQuery(db, OWNER, { period: 'all',  q: ['a', 'b'] }));
 });
 
 test('garbage category filter is ignored, not zeroed', () => {
   const db = fixture();
-  assert.equal(feedQuery(db, OWNER, { category: 'abc' }).rows.length, 4);
+  assert.equal(feedQuery(db, OWNER, { period: 'all',  category: 'abc' }).rows.length, 4);
 });
 
 test('feedQuery limit option: default 500, explicit small limit, 0 means unlimited', () => {
   const db = fixture();
-  assert.equal(feedQuery(db, OWNER, {}, { limit: 2 }).rows.length, 2);
-  assert.equal(feedQuery(db, OWNER, {}, { limit: 0 }).rows.length, 4);
-  assert.equal(feedQuery(db, OWNER, {}).rows.length, 4);
+  assert.equal(feedQuery(db, OWNER, { period: 'all' }, { limit: 2 }).rows.length, 2);
+  assert.equal(feedQuery(db, OWNER, { period: 'all' }, { limit: 0 }).rows.length, 4);
+  assert.equal(feedQuery(db, OWNER, { period: 'all' }).rows.length, 4);
 });
 
 test('totals: bank cash vs credit owed, per visibility', () => {
@@ -99,6 +99,6 @@ test('totals: bank cash vs credit owed, per visibility', () => {
 
 test('member with zero visible accounts gets empty results, not SQL errors', () => {
   const db = openDb(':memory:');
-  assert.equal(feedQuery(db, MEMBER, {}).rows.length, 0);
+  assert.equal(feedQuery(db, MEMBER, { period: 'all' }).rows.length, 0);
   assert.deepEqual(totals(db, MEMBER), { cashCents: 0, owedCents: 0 });
 });

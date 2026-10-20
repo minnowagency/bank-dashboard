@@ -74,7 +74,7 @@ let syncing = null;
 const syncNow = () => syncing || (syncing = syncOnce().finally(() => { syncing = null; }));
 startScheduler({ run: syncNow, intervalMs: plaidReady ? PLAID_INTERVAL_MS : undefined });
 
-const app = createApp(db, { cookieSecure: config.cookieSecure,
+const app = createApp(db, { cookieSecure: config.cookieSecure, appSecret: config.appSecret, log: console.log,
   plaid: plaidReady ? { client: plaidClient, appSecret: config.appSecret, syncNow } : null });
 app.listen(config.port, config.host, () => {
   console.log(`bank-dashboard listening on http://${config.host}:${config.port}`);

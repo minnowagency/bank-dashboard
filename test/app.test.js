@@ -11,13 +11,16 @@ test('unauthenticated requests redirect to /login; /health is open', async () =>
   assert.equal(res.headers.location, '/login');
 });
 
-test('login sets HttpOnly SameSite=Lax cookie; bad login re-renders with error', async () => {
+test('login cookies are HttpOnly SameSite=Strict; bad login re-renders with error', async () => {
   const { app } = makeApp();
   const ok = await request(app).post('/login').type('form').send({ username: 'michael', password: 'ownerpass1' });
   assert.equal(ok.status, 302);
+  assert.equal(ok.headers.location, '/login/2fa');
   const cookie = ok.headers['set-cookie'][0];
+  assert.match(cookie, /^mfa=/);
   assert.match(cookie, /HttpOnly/i);
-  assert.match(cookie, /SameSite=Lax/i);
+  assert.match(cookie, /SameSite=Strict/i);
+  assert.ok(!ok.headers['set-cookie'].some(c => c.startsWith('session=')), 'no session before the second factor');
   const bad = await request(app).post('/login').type('form').send({ username: 'michael', password: 'nope' });
   assert.equal(bad.status, 401);
   assert.match(bad.text, /Invalid username or password/);

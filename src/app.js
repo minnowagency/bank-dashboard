@@ -1,40 +1,93 @@
 const path = require('path');
 const express = require('express');
 const cookieParser = require('cookie-parser');
-const { verifyLogin, createSession, getSessionUser, deleteSession, SESSION_TTL_SECONDS } = require('./auth');
+const auth = require('./auth');
+const { verifyLogin, createSession, getSessionUser, deleteSession, SESSION_TTL_SECONDS } = auth;
+const { securityHeaders, sameOriginPosts, createFailureLimiter } = require('./security');
+const qrcode = require('qrcode-generator');
 const { createRule, applyRulesToUncategorized } = require('./rules');
 const { toCents } = require('./money');
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 
-function createApp(db, { cookieSecure = false, plaid = null } = {}) {
+function createApp(db, { cookieSecure = false, plaid = null, appSecret = plaid ? plaid.appSecret : '',
+  log = () => {}, limiter = createFailureLimiter() } = {}) {
   const app = express();
+  app.disable('x-powered-by');
+  app.set('trust proxy', 'loopback');   // tailscale serve forwards the client IP
   app.set('view engine', 'ejs');
   app.set('views', path.join(__dirname, 'views'));
+  app.use(securityHeaders);
   app.use(express.urlencoded({ extended: false }));
   app.use(cookieParser());
+  app.use(sameOriginPosts);
   app.use('/static', express.static(path.join(__dirname, '..', 'public')));
   app.locals.fmtUSD = require('./money').fmtUSD;
   app.locals.senderCategoryOptions = senderCategoryOptions;
   app.locals.fmtDate = (epoch) => new Date(epoch * 1000).toISOString().slice(0, 10);
+
+  const cookieOpts = (maxAgeSeconds) => ({ httpOnly: true, sameSite: 'strict', secure: cookieSecure, path: '/',
+    maxAge: maxAgeSeconds * 1000 });
+  const TOO_MANY = 'Too many failed attempts from this device. Try again in 15 minutes.';
+  const startSession = (res, user) => {
+    auth.clearFailures(db, user.id);
+    res.cookie('session', createSession(db, user.id, nowSec()), cookieOpts(SESSION_TTL_SECONDS));
+  };
 
   app.get('/health', (req, res) => res.json({ ok: true }));
 
   app.get('/login', (req, res) => res.render('login', { error: null }));
 
   app.post('/login', (req, res) => {
-    const r = verifyLogin(db, String(req.body.username || ''), String(req.body.password || ''), nowSec());
+    const username = String(req.body.username || '');
+    if (limiter.blocked(req.ip)) { log(`[auth] rate-limited ip=${req.ip}`); return res.status(429).render('login', { error: TOO_MANY }); }
+    const r = verifyLogin(db, username, String(req.body.password || ''), nowSec());
     if (!r.ok) {
+      limiter.fail(req.ip);
+      log(`[auth] password ${r.reason} user=${JSON.stringify(username)} ip=${req.ip}`);
       const msg = r.reason === 'locked'
         ? 'Account locked for 15 minutes after too many attempts.'
         : 'Invalid username or password.';
       return res.status(401).render('login', { error: msg });
     }
-    const token = createSession(db, r.user.id, nowSec());
-    res.cookie('session', token, {
-      httpOnly: true, sameSite: 'lax', secure: cookieSecure, maxAge: SESSION_TTL_SECONDS * 1000,
-    });
-    res.redirect('/');
+    if (auth.hasTotp(r.user)) {
+      res.cookie('mfa', auth.createLoginChallenge(db, r.user.id, nowSec()), cookieOpts(auth.CHALLENGE_TTL_SECONDS));
+      log(`[auth] password ok, code required user=${r.user.username} ip=${req.ip}`);
+      return res.redirect('/login/2fa');
+    }
+    // Not enrolled yet: the session is confined to the enrollment page below.
+    log(`[auth] password ok, 2fa not set up user=${r.user.username} ip=${req.ip}`);
+    startSession(res, r.user);
+    res.redirect('/account/security');
+  });
+
+  app.get('/login/2fa', (req, res) => {
+    if (!auth.getChallengeUser(db, req.cookies.mfa, nowSec())) return res.redirect('/login');
+    res.render('login_2fa', { error: null });
+  });
+
+  app.post('/login/2fa', (req, res) => {
+    const now = nowSec();
+    if (limiter.blocked(req.ip)) { log(`[auth] rate-limited ip=${req.ip}`); return res.status(429).render('login_2fa', { error: TOO_MANY }); }
+    const user = auth.getChallengeUser(db, req.cookies.mfa, now);
+    if (!user) return res.status(401).render('login', { error: 'Sign-in timed out. Enter your password again.' });
+    if (auth.isLocked(user, now)) {
+      auth.deleteChallenge(db, req.cookies.mfa);
+      return res.status(401).render('login', { error: 'Account locked for 15 minutes after too many attempts.' });
+    }
+    const v = auth.verifySecondFactor(db, user, req.body.code, appSecret, now);
+    if (!v.ok) {
+      auth.failChallenge(db, req.cookies.mfa);
+      auth.recordFailure(db, user, now);
+      limiter.fail(req.ip);
+      log(`[auth] code failed user=${user.username} ip=${req.ip}`);
+      return res.status(401).render('login_2fa', { error: 'That code didn\'t work. Try the current code from your app.' });
+    }
+    auth.deleteChallenge(db, req.cookies.mfa);
+    res.clearCookie('mfa', { path: '/' });
+    log(`[auth] login ok method=${v.method} user=${user.username} ip=${req.ip}`);
+    startSession(res, user);
+    res.redirect(v.method === 'recovery' ? '/account/security?used=recovery' : '/');
   });
 
   // Everything below requires auth
@@ -43,15 +96,20 @@ function createApp(db, { cookieSecure = false, plaid = null } = {}) {
     if (!user) return res.redirect('/login');
     req.user = user;
     res.locals.user = user;
+    // Two-factor is mandatory: until it's set up, only enrollment and sign-out work.
+    if (!auth.hasTotp(user) && !req.path.startsWith('/account/security') && req.path !== '/logout') {
+      return res.redirect('/account/security');
+    }
     next();
   });
 
   app.post('/logout', (req, res) => {
     deleteSession(db, req.cookies.session);
-    res.clearCookie('session');
+    res.clearCookie('session', { path: '/' });
     res.redirect('/login');
   });
 
+  registerSecurityRoutes(app, db, { appSecret, log });
   registerRoutes(app, db, plaid);
   return app;
 }
@@ -82,6 +140,41 @@ function staleness(db, user) {
 function aiEnabled(db) {
   const row = db.prepare("SELECT value FROM settings WHERE key='ai_enabled'").get();
   return !row || row.value === '1';
+}
+
+// /account/security: enroll an authenticator app, and later regenerate recovery codes.
+function registerSecurityRoutes(app, db, { appSecret, log }) {
+  const qrSvg = (text) => { const q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 5, margin: 4, scalable: true }); };
+  const page = (req, res, extra = {}) => {
+    const user = req.user;
+    const base = { title: 'Security', active: 'security', error: null, recoveryCodes: null,
+      usedRecovery: req.query.used === 'recovery', enrolled: auth.hasTotp(user), ...extra };
+    if (base.enrolled) return res.render('security', { ...base, unusedCodes: auth.unusedRecoveryCount(db, user.id) });
+    if (!appSecret) return res.status(503).render('security', { ...base, error: 'Two-factor setup needs APP_SECRET in the server\'s .env. Run bank-set-plaid-keys (or ask Claude) and restart.' });
+    const secret = auth.startTotpEnrollment(db, user, appSecret);
+    res.render('security', { ...base, secret: secret.replace(/(.{4})/g, '$1 ').trim(), qr: qrSvg(auth.enrollmentUri(user, secret)) });
+  };
+
+  app.get('/account/security', (req, res) => page(req, res));
+
+  app.post('/account/security/enable', (req, res) => {
+    if (auth.hasTotp(req.user) || !appSecret) return res.redirect('/account/security');
+    const fresh = { ...db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id) };
+    const r = auth.confirmTotpEnrollment(db, fresh, req.body.code, appSecret, Math.floor(Date.now() / 1000));
+    if (!r.ok) { res.status(400); return page(req, res, { error: 'That code didn\'t match. Check the time on your phone and enter the current code.' }); }
+    auth.deleteOtherSessions(db, req.user.id, req.cookies.session);
+    log(`[auth] 2fa enabled user=${req.user.username}`);
+    req.user = { ...db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id) };
+    page(req, res, { recoveryCodes: r.recoveryCodes });
+  });
+
+  app.post('/account/security/recovery-codes', (req, res) => {
+    const v = auth.verifySecondFactor(db, req.user, req.body.code, appSecret, Math.floor(Date.now() / 1000));
+    if (!v.ok) { res.status(400); return page(req, res, { error: 'That code didn\'t work.' }); }
+    const codes = auth.regenerateRecoveryCodes(db, req.user.id);
+    log(`[auth] recovery codes regenerated user=${req.user.username}`);
+    page(req, res, { recoveryCodes: codes });
+  });
 }
 
 function registerRoutes(app, db, plaid) {

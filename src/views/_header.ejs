@@ -10,6 +10,7 @@
   <a href="/recurring" class="<%= typeof active !== 'undefined' && active === 'recurring' ? 'active' : '' %>">Recurring</a>
   <a href="/rules" class="<%= typeof active !== 'undefined' && active === 'rules' ? 'active' : '' %>">Rules</a>
   <% if (user.role === 'owner') { %><a href="/accounts" class="<%= typeof active !== 'undefined' && active === 'accounts' ? 'active' : '' %>">Accounts</a><a href="/connections" class="<%= typeof active !== 'undefined' && active === 'connections' ? 'active' : '' %>">Connections</a><% } %>
+  <a href="/account/security" class="<%= typeof active !== 'undefined' && active === 'security' ? 'active' : '' %>">Security</a>
   <form method="post" action="/logout" class="inline"><button class="linklike"><%= user.username %> · sign out</button></form>
 </nav>
 <main>

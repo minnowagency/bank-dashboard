@@ -4,13 +4,31 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('owner','member')),
   failed_attempts INTEGER NOT NULL DEFAULT 0,
-  locked_until INTEGER
+  locked_until INTEGER,
+  totp_secret_enc TEXT,                -- AES-GCM (APP_SECRET); set once 2FA is confirmed
+  totp_pending_enc TEXT,               -- secret shown on the enrollment page, not yet confirmed
+  totp_last_step INTEGER               -- last redeemed 30-second step (replay guard)
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
-  token TEXT PRIMARY KEY,
+  token TEXT PRIMARY KEY,              -- SHA-256 of the cookie value, never the value itself
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  expires_at INTEGER NOT NULL
+  expires_at INTEGER NOT NULL,
+  last_seen_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS login_challenges (   -- password accepted, second factor pending
+  token TEXT PRIMARY KEY,              -- SHA-256 of the mfa cookie value
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at INTEGER NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS recovery_codes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  code_hash TEXT NOT NULL,             -- SHA-256 of the normalized code
+  used_at INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS categories (

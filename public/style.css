@@ -197,3 +197,9 @@ tr.sel td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
   * { animation: none !important; transition: none !important; }
   .tile:hover { transform: none; }
 }
+
+/* Security page */
+.qr { width: 220px; max-width: 100%; background: #fff; padding: 6px; border-radius: 8px; margin: 12px 0; }
+.qr svg { display: block; width: 100%; height: auto; }
+code.secret { word-break: break-all; font-size: 1.05em; letter-spacing: .05em; }
+pre.recovery-codes { font-size: 1.1em; line-height: 1.7; padding: 12px 16px; background: rgba(127,127,127,.12); border-radius: 8px; max-width: 260px; }
